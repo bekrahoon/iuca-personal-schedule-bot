@@ -37,8 +37,8 @@ except ImportError:
     pass
 
 import storage
-from ai_editor import ai_enabled, edit_schedule
-from storage import TIME_SLOTS, make_lesson, start_minutes
+from ai_editor import AIBusyError, ai_enabled, edit_schedule
+from storage import TIME_SLOTS, lessons_on, make_lesson, next_date_for_weekday, normalize_extras, start_minutes
 
 # =====================================================================
 # НАСТРОЙКИ
@@ -74,9 +74,33 @@ async def lessons_of(user_id: int) -> list[dict]:
     return (await storage.load(user_id))["lessons"]
 
 
-def fmt_lesson(x: dict, idx: int | None = None) -> str:
-    head = f"<b>{idx}. ⏰ {x['t']}</b>" if idx else f"<b>⏰ {x['t']}</b>"
-    lines = [head, f"📚 {escape(x['s'])}"]
+def ddmm(iso: str) -> str:
+    return f"{iso[8:10]}.{iso[5:7]}"
+
+
+def fmt_once(o: dict) -> str:
+    if o.get("cancel"):
+        txt = "отменена"
+    else:
+        parts = []
+        if o.get("t"):
+            parts.append(f"время {o['t']}")
+        if o.get("r"):
+            parts.append(f"ауд. {escape(o['r'])}")
+        if o.get("note"):
+            parts.append(escape(o["note"]))
+        txt = ", ".join(parts)
+    return f"{ddmm(o['date'])}: {txt}"
+
+
+def fmt_lesson(x: dict, idx: int | None = None, base_view: bool = False) -> str:
+    """base_view=True — показываем недельную пару и список её разовых изменений;
+    иначе — пару на конкретную дату (с уже применёнными изменениями)."""
+    num = f"{idx}. " if idx else ""
+    if x.get("_cancel"):
+        return f"<b>{num}❌ <s>{x['t']}</s></b>\n📚 <s>{escape(x['s'])}</s>\n⚠️ <b>Пара отменена в этот день</b>"
+    mark = " 🔄" if x.get("_changed") else ""
+    lines = [f"<b>{num}⏰ {x['t']}</b>{mark}", f"📚 {escape(x['s'])}"]
     if x.get("r"):
         lines.append(f"🚪 Ауд.: <code>{escape(x['r'])}</code>")
     if x.get("e"):
@@ -85,29 +109,51 @@ def fmt_lesson(x: dict, idx: int | None = None) -> str:
         lines.append(f"📝 <i>{escape(x['note'])}</i>")
     if x.get("mute"):
         lines.append("🔕 <i>без напоминания</i>")
+    if x.get("_changed"):
+        lines.append("🔄 <i>изменено только на этот день</i>")
+    if base_view:
+        if x.get("date"):
+            lines.append(f"📅 <i>разовая пара: {ddmm(x['date'])}</i>")
+        for o in x.get("once", []):
+            lines.append(f"↳ <i>{fmt_once(o)}</i>")
     return "\n".join(lines)
 
 
-async def fmt_day(user_id: int, d: int) -> str:
+async def fmt_day(user_id: int, d: int, on_date=None) -> str:
+    """on_date — конкретная дата (с разовыми изменениями); None — недельный вид для редактирования."""
     if d > 5:
         return "🎉 <b>Воскресенье</b> — выходной!"
-    items = [x for x in await lessons_of(user_id) if x["d"] == d]
-    header = f"📅 <b>{DAYS_RU[d]}</b>\n"
+    lessons = await lessons_of(user_id)
+    if on_date is not None:
+        items = lessons_on(lessons, on_date)
+        header = f"📅 <b>{DAYS_RU[d]}, {on_date.strftime('%d.%m')}</b>\n"
+    else:
+        items = [x for x in lessons if x["d"] == d]
+        header = f"📅 <b>{DAYS_RU[d]}</b>\n"
     if not items:
         return header + "\n😴 Пар нет!"
-    return header + "\n" + "\n\n".join(fmt_lesson(x, i) for i, x in enumerate(items, 1))
+    return header + "\n" + "\n\n".join(fmt_lesson(x, i, base_view=on_date is None) for i, x in enumerate(items, 1))
 
 
 def fmt_week(lessons: list[dict], title: str = "🗓 <b>Моё расписание</b>") -> str:
     blocks = []
     for d in range(6):
-        items = [x for x in lessons if x["d"] == d]
+        items = [x for x in lessons if x["d"] == d and not x.get("date")]
         if not items:
             continue
         rows = [f"📌 <b>{DAYS_RU[d].upper()}</b>"]
         for x in items:
             room = f" (<b>{escape(x['r'])}</b>)" if x.get("r") else ""
             rows.append(f"• <code>{x['t']}</code> — {escape(x['s'])}{room}")
+            for o in x.get("once", []):
+                rows.append(f"    ↳ <i>{fmt_once(o)}</i>")
+        blocks.append("\n".join(rows))
+    one_off = sorted((x for x in lessons if x.get("date")), key=lambda x: (x["date"], start_minutes(x["t"])))
+    if one_off:
+        rows = ["📌 <b>РАЗОВЫЕ ПАРЫ</b>"]
+        for x in one_off:
+            room = f" (<b>{escape(x['r'])}</b>)" if x.get("r") else ""
+            rows.append(f"• {ddmm(x['date'])} <code>{x['t']}</code> — {escape(x['s'])}{room}")
         blocks.append("\n".join(rows))
     if not blocks:
         return title + "\n\nПока пусто. Отправь фото расписания или добавь пары через «📚 Добавить из IUCA»."
@@ -121,8 +167,20 @@ def fmt_diff(old: list[dict], new: list[dict]) -> str:
     for x in new:
         o = old_by_id.get(x["id"])
         if o is None:
-            lines.append(f"➕ {DAYS_SHORT[x['d']]} {x['t']} — {escape(x['s'])}")
-        elif any(o.get(k) != x.get(k) for k in ("d", "t", "s", "r", "e", "note")):
+            when = f"{ddmm(x['date'])} (разово)" if x.get("date") else DAYS_SHORT[x["d"]]
+            lines.append(f"➕ {when} {x['t']} — {escape(x['s'])}")
+            for oc in x.get("once", []):
+                lines.append(f"    📌 {fmt_once(oc)}")
+            continue
+        old_once = {json.dumps(e, sort_keys=True) for e in o.get("once", [])}
+        for oc in x.get("once", []):
+            if json.dumps(oc, sort_keys=True) not in old_once:
+                lines.append(f"📌 {escape(x['s'])} ({DAYS_SHORT[x['d']]} {x['t']}) — {fmt_once(oc)}")
+        new_once = {json.dumps(e, sort_keys=True) for e in x.get("once", [])}
+        for oc in o.get("once", []):
+            if json.dumps(oc, sort_keys=True) not in new_once:
+                lines.append(f"🗑 Убрано разовое: {escape(o['s'])} — {fmt_once(oc)}")
+        if any(o.get(k) != x.get(k) for k in ("d", "t", "s", "r", "e", "note")):
             lines.append(
                 f"✏️ {DAYS_SHORT[o['d']]} {o['t']} {escape(o['s'])}"
                 f"\n    → {DAYS_SHORT[x['d']]} {x['t']} {escape(x['s'])}"
@@ -265,17 +323,19 @@ async def cmd_help(message: Message, state: FSMContext):
 @router.message(F.text.in_({BTN_TODAY, BTN_TOMORROW}))
 async def show_today(message: Message, state: FSMContext):
     await state.clear()
-    d = now_kg().weekday()
+    day = now_kg().date()
     if message.text == BTN_TOMORROW:
-        d = (d + 1) % 7
-    await message.answer(await fmt_day(message.from_user.id, d), reply_markup=days_kb(min(d, 5)), parse_mode="HTML")
+        day += timedelta(days=1)
+    d = day.weekday()
+    await message.answer(await fmt_day(message.from_user.id, d, day), reply_markup=days_kb(min(d, 5)), parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("day:"))
 async def cb_day(call: CallbackQuery):
     d = int(call.data.split(":")[1])
     try:
-        await call.message.edit_text(await fmt_day(call.from_user.id, d), reply_markup=days_kb(d), parse_mode="HTML")
+        day = next_date_for_weekday(d, now_kg().date())
+        await call.message.edit_text(await fmt_day(call.from_user.id, d, day), reply_markup=days_kb(d), parse_mode="HTML")
     except Exception:
         pass
     await call.answer()
@@ -586,7 +646,9 @@ async def check_reminders(bot: Bot) -> int:
             continue
         sent_today = set(data.get("sent", {}).get(today, []))
         changed = False
-        for x in data["lessons"]:
+        for x in lessons_on(data["lessons"], now.date()):
+            if x.get("_cancel"):
+                continue
             left = start_minutes(x["t"]) - cur
             if x["d"] == now.weekday() and not x.get("mute") and 0 < left <= m and x["id"] not in sent_today:
                 try:
@@ -621,6 +683,11 @@ async def run_ai_edit(message: Message, state: FSMContext, instruction: str, ima
     wait = await message.answer("🧠 Разбираю…")
     try:
         new, summary = await edit_schedule(current, instruction, image, mime)
+    except AIBusyError:
+        return await wait.edit_text(
+            "⏳ Gemini сейчас перегружен (это на стороне Google). Попробуй ещё раз через минуту — "
+            "просто отправь то же сообщение."
+        )
     except Exception as e:
         logging.exception("AI edit failed")
         return await wait.edit_text(f"❌ Не получилось: {escape(str(e))[:300]}", parse_mode="HTML")
@@ -643,8 +710,7 @@ async def on_json_import(message: Message, state: FSMContext, bot: Bot):
         raw = json.loads(buf.getvalue().decode("utf-8-sig"))
         items = raw["lessons"] if isinstance(raw, dict) else raw
         new = [
-            {**make_lesson(x["d"], x["t"], x["s"], x.get("r", ""), x.get("e", ""), x.get("note", "")),
-             **({"mute": True} if x.get("mute") else {})}
+            normalize_extras(make_lesson(x["d"], x["t"], x["s"], x.get("r", ""), x.get("e", ""), x.get("note", "")), x)
             for x in items
             if 0 <= int(x["d"]) <= 5
         ]

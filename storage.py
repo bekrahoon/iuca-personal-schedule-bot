@@ -102,6 +102,7 @@ async def load(user_id: int) -> dict:
 
 
 async def save(user_id: int, data: dict) -> None:
+    data["lessons"] = prune_past(data.get("lessons", []))
     await kv_set(f"users/{user_id}", data)
 
 
@@ -217,3 +218,93 @@ async def set_mute_day(user_id: int, d: int, mute: bool) -> None:
             else:
                 x.pop("mute", None)
     await save(user_id, data)
+
+
+# ---------------------------------------------------------------------
+# Разовые изменения на конкретную дату
+#   lesson["once"] = [{"date": "2026-10-27", "r": "Актовый зал"}, {"date": "...", "cancel": True}, ...]
+#   lesson["date"] = "2026-10-27"  -> разовая пара, только в этот день
+# ---------------------------------------------------------------------
+from datetime import date as _date, datetime as _datetime, timedelta as _timedelta, timezone as _timezone
+
+KG_TZ = _timezone(_timedelta(hours=6))
+
+
+def today_kg() -> _date:
+    return _datetime.now(KG_TZ).date()
+
+
+def _iso(v) -> str | None:
+    try:
+        return _date.fromisoformat(str(v).strip()[:10]).isoformat()
+    except Exception:
+        return None
+
+
+def normalize_extras(lesson: dict, raw: dict) -> dict:
+    """Переносит в lesson поля date/once/mute из сырых данных (AI, импорт), с проверкой."""
+    d = _iso(raw.get("date")) if raw.get("date") else None
+    if d:
+        lesson["date"] = d
+        lesson["d"] = _date.fromisoformat(d).weekday()
+    once = []
+    for o in raw.get("once") or []:
+        od = _iso(o.get("date"))
+        if not od:
+            continue
+        entry = {"date": od}
+        if o.get("cancel"):
+            entry["cancel"] = True
+        for k in ("t", "r", "note"):
+            if o.get(k):
+                entry[k] = normalize_time(o[k]) if k == "t" else str(o[k]).strip()
+        if len(entry) > 1:
+            once.append(entry)
+    if once:
+        lesson["once"] = sorted(once, key=lambda e: e["date"])
+    if raw.get("mute"):
+        lesson["mute"] = True
+    return lesson
+
+
+def prune_past(lessons: list[dict]) -> list[dict]:
+    """Убирает прошедшие разовые пары и прошедшие разовые изменения."""
+    today = today_kg().isoformat()
+    out = []
+    for x in lessons:
+        if x.get("date") and x["date"] < today:
+            continue
+        if x.get("once"):
+            x["once"] = [o for o in x["once"] if o["date"] >= today]
+            if not x["once"]:
+                x.pop("once")
+        out.append(x)
+    return out
+
+
+def lessons_on(lessons: list[dict], day: _date) -> list[dict]:
+    """Фактические пары на конкретную дату: с учётом разовых изменений, отмен и разовых пар.
+    Отменённые возвращаются с флагом _cancel, изменённые — с флагом _changed."""
+    iso = day.isoformat()
+    out = []
+    for x in lessons:
+        if x["d"] != day.weekday():
+            continue
+        if x.get("date") and x["date"] != iso:
+            continue
+        y = dict(x)
+        for o in x.get("once", []):
+            if o["date"] == iso:
+                if o.get("cancel"):
+                    y["_cancel"] = True
+                for k in ("t", "r", "note"):
+                    if o.get(k):
+                        y[k] = o[k]
+                        y["_changed"] = True
+        out.append(y)
+    return sorted(out, key=lambda x: start_minutes(x["t"]))
+
+
+def next_date_for_weekday(d: int, base: _date | None = None) -> _date:
+    base = base or today_kg()
+    return base + _timedelta(days=(d - base.weekday()) % 7)
