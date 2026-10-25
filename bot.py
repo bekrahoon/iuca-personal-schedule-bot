@@ -72,8 +72,8 @@ def now_kg() -> datetime:
     return datetime.now(KG_TZ)
 
 
-def lessons_of(user_id: int) -> list[dict]:
-    return storage.load(user_id)["lessons"]
+async def lessons_of(user_id: int) -> list[dict]:
+    return (await storage.load(user_id))["lessons"]
 
 
 def fmt_lesson(x: dict, idx: int | None = None) -> str:
@@ -88,10 +88,10 @@ def fmt_lesson(x: dict, idx: int | None = None) -> str:
     return "\n".join(lines)
 
 
-def fmt_day(user_id: int, d: int) -> str:
+async def fmt_day(user_id: int, d: int) -> str:
     if d > 5:
         return "🎉 <b>Воскресенье</b> — выходной!"
-    items = [x for x in lessons_of(user_id) if x["d"] == d]
+    items = [x for x in await lessons_of(user_id) if x["d"] == d]
     header = f"📅 <b>{DAYS_RU[d]}</b>\n"
     if not items:
         return header + "\n😴 Пар нет!"
@@ -176,9 +176,9 @@ def days_kb(active: int, prefix: str = "day") -> InlineKeyboardMarkup:
     return b.as_markup()
 
 
-def edit_day_kb(user_id: int, d: int) -> InlineKeyboardMarkup:
+async def edit_day_kb(user_id: int, d: int) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
-    for x in [x for x in lessons_of(user_id) if x["d"] == d]:
+    for x in [x for x in await lessons_of(user_id) if x["d"] == d]:
         b.row(InlineKeyboardButton(text=f"🗑 {x['t']} {x['s'][:28]}", callback_data=f"del:{x['id']}"))
     b.row(InlineKeyboardButton(text="➕ Добавить пару в этот день", callback_data=f"add:{d}"))
     day_row = [
@@ -238,7 +238,7 @@ async def owner_only_cb(handler, event, data):
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
-    storage.save(message.from_user.id, storage.load(message.from_user.id))
+    await storage.save(message.from_user.id, await storage.load(message.from_user.id))
     ai_line = (
         "📸 <b>Отправь фото</b> расписания — я сам всё внесу.\n"
         "💬 Или напиши словами: <i>«перенеси Machine Learning на четверг 14:45»</i>, "
@@ -268,14 +268,14 @@ async def show_today(message: Message, state: FSMContext):
     d = now_kg().weekday()
     if message.text == BTN_TOMORROW:
         d = (d + 1) % 7
-    await message.answer(fmt_day(message.from_user.id, d), reply_markup=days_kb(min(d, 5)), parse_mode="HTML")
+    await message.answer(await fmt_day(message.from_user.id, d), reply_markup=days_kb(min(d, 5)), parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("day:"))
 async def cb_day(call: CallbackQuery):
     d = int(call.data.split(":")[1])
     try:
-        await call.message.edit_text(fmt_day(call.from_user.id, d), reply_markup=days_kb(d), parse_mode="HTML")
+        await call.message.edit_text(await fmt_day(call.from_user.id, d), reply_markup=days_kb(d), parse_mode="HTML")
     except Exception:
         pass
     await call.answer()
@@ -284,13 +284,13 @@ async def cb_day(call: CallbackQuery):
 @router.message(F.text == BTN_WEEK)
 async def show_week(message: Message, state: FSMContext):
     await state.clear()
-    for part in chunks(fmt_week(lessons_of(message.from_user.id))):
+    for part in chunks(fmt_week(await lessons_of(message.from_user.id))):
         await message.answer(part, parse_mode="HTML")
 
 
 @router.message(Command("export"))
 async def cmd_export(message: Message):
-    data = storage.load(message.from_user.id)
+    data = await storage.load(message.from_user.id)
     raw = json.dumps(data["lessons"], ensure_ascii=False, indent=2).encode()
     await message.answer_document(BufferedInputFile(raw, "my_schedule.json"), caption="Твоё расписание")
 
@@ -303,8 +303,8 @@ async def edit_menu(message: Message, state: FSMContext):
     await state.clear()
     d = min(now_kg().weekday(), 5)
     await message.answer(
-        fmt_day(message.from_user.id, d) + "\n\n<i>Нажми 🗑, чтобы удалить пару.</i>",
-        reply_markup=edit_day_kb(message.from_user.id, d),
+        await fmt_day(message.from_user.id, d) + "\n\n<i>Нажми 🗑, чтобы удалить пару.</i>",
+        reply_markup=await edit_day_kb(message.from_user.id, d),
         parse_mode="HTML",
     )
 
@@ -312,8 +312,8 @@ async def edit_menu(message: Message, state: FSMContext):
 async def refresh_edit(call: CallbackQuery, d: int):
     try:
         await call.message.edit_text(
-            fmt_day(call.from_user.id, d) + "\n\n<i>Нажми 🗑, чтобы удалить пару.</i>",
-            reply_markup=edit_day_kb(call.from_user.id, d),
+            await fmt_day(call.from_user.id, d) + "\n\n<i>Нажми 🗑, чтобы удалить пару.</i>",
+            reply_markup=await edit_day_kb(call.from_user.id, d),
             parse_mode="HTML",
         )
     except Exception:
@@ -328,7 +328,7 @@ async def cb_edit_day(call: CallbackQuery):
 
 @router.callback_query(F.data.startswith("del:"))
 async def cb_delete(call: CallbackQuery):
-    removed = storage.delete_lesson(call.from_user.id, call.data.split(":")[1])
+    removed = await storage.delete_lesson(call.from_user.id, call.data.split(":")[1])
     if removed:
         await refresh_edit(call, removed["d"])
         await call.answer(f"Удалено: {removed['s'][:40]}")
@@ -348,7 +348,7 @@ async def cb_clear_ask(call: CallbackQuery):
 
 @router.callback_query(F.data == "clear_yes")
 async def cb_clear(call: CallbackQuery):
-    storage.replace_lessons(call.from_user.id, [])
+    await storage.replace_lessons(call.from_user.id, [])
     await call.message.edit_text("🧹 Расписание очищено.")
     await call.answer()
 
@@ -408,9 +408,9 @@ async def add_teacher(message: Message, state: FSMContext):
     data = await state.get_data()
     teacher = "" if message.text.strip() == "-" else message.text.strip()
     lesson = make_lesson(data["add_d"], data["add_t"], data["add_s"], data["add_r"], teacher)
-    storage.add_lessons(message.from_user.id, [lesson])
+    await storage.add_lessons(message.from_user.id, [lesson])
     await state.clear()
-    await message.answer("✅ Добавлено!\n\n" + fmt_day(message.from_user.id, lesson["d"]), parse_mode="HTML")
+    await message.answer("✅ Добавлено!\n\n" + await fmt_day(message.from_user.id, lesson["d"]), parse_mode="HTML")
 
 
 # =====================================================================
@@ -469,7 +469,7 @@ async def cb_section(call: CallbackQuery):
 async def cb_section_add(call: CallbackQuery):
     s, groups, items = SECTIONS[int(call.data.split(":")[1])]
     new = [make_lesson(it["d"], it["t"], it["s"], ", ".join(it["r"]), ", ".join(it["e"])) for it in items]
-    added = storage.add_lessons(call.from_user.id, new)
+    added = await storage.add_lessons(call.from_user.id, new)
     await call.message.edit_reply_markup(reply_markup=None)
     await call.message.answer(f"✅ Добавлено пар: {added}" + (" (остальные уже были)" if added < len(new) else ""))
     await call.answer()
@@ -481,7 +481,7 @@ async def cb_section_add(call: CallbackQuery):
 @router.message(F.text == BTN_REMIND)
 async def remind_menu(message: Message, state: FSMContext):
     await state.clear()
-    cur = storage.load(message.from_user.id)["remind"]
+    cur = (await storage.load(message.from_user.id))["remind"]
     b = InlineKeyboardBuilder()
     for m in (0, 5, 10, 15, 30):
         label = "Выкл" if m == 0 else f"за {m} мин"
@@ -493,34 +493,48 @@ async def remind_menu(message: Message, state: FSMContext):
 @router.callback_query(F.data.startswith("rem:"))
 async def cb_remind(call: CallbackQuery):
     m = int(call.data.split(":")[1])
-    storage.set_remind(call.from_user.id, m)
+    await storage.set_remind(call.from_user.id, m)
     await call.message.edit_text("🔕 Напоминания выключены" if m == 0 else f"🔔 Буду напоминать за {m} мин до пары")
     await call.answer()
 
 
+async def check_reminders(bot: Bot) -> int:
+    """Отправляет напоминания о парах, которые начнутся в ближайшие `remind` минут.
+    Можно вызывать с любой периодичностью: уже отправленные не дублируются."""
+    now = now_kg()
+    cur = now.hour * 60 + now.minute
+    today = now.date().isoformat()
+    sent_count = 0
+    for uid in await storage.all_user_ids():
+        data = await storage.load(uid)
+        m = data.get("remind", 0)
+        if not m or now.weekday() > 5:
+            continue
+        sent_today = set(data.get("sent", {}).get(today, []))
+        changed = False
+        for x in data["lessons"]:
+            left = start_minutes(x["t"]) - cur
+            if x["d"] == now.weekday() and 0 < left <= m and x["id"] not in sent_today:
+                try:
+                    await bot.send_message(uid, f"🔔 Через {left} мин:\n\n" + fmt_lesson(x), parse_mode="HTML")
+                    sent_count += 1
+                except Exception:
+                    logging.exception("reminder send failed")
+                sent_today.add(x["id"])
+                changed = True
+        if changed:
+            data["sent"] = {today: sorted(sent_today)}
+            await storage.save(uid, data)
+    return sent_count
+
+
 async def reminder_loop(bot: Bot):
-    sent: set[tuple] = set()
     while True:
         try:
-            now = now_kg()
-            cur = now.hour * 60 + now.minute
-            for uid in storage.all_user_ids():
-                data = storage.load(uid)
-                m = data.get("remind", 0)
-                if not m:
-                    continue
-                for x in data["lessons"]:
-                    if x["d"] == now.weekday() and start_minutes(x["t"]) - m == cur:
-                        key = (uid, now.date(), x["id"])
-                        if key in sent:
-                            continue
-                        sent.add(key)
-                        await bot.send_message(uid, f"🔔 Через {m} мин:\n\n" + fmt_lesson(x), parse_mode="HTML")
-            if len(sent) > 5000:
-                sent.clear()
+            await check_reminders(bot)
         except Exception:
             logging.exception("reminder loop")
-        await asyncio.sleep(20)
+        await asyncio.sleep(30)
 
 
 # =====================================================================
@@ -529,7 +543,7 @@ async def reminder_loop(bot: Bot):
 async def run_ai_edit(message: Message, state: FSMContext, instruction: str, image: bytes | None, mime: str):
     if not ai_enabled():
         return await message.answer("⚠️ Для этого нужен GEMINI_API_KEY в переменных окружения.")
-    current = lessons_of(message.from_user.id)
+    current = await lessons_of(message.from_user.id)
     wait = await message.answer("🧠 Разбираю…")
     try:
         new, summary = await edit_schedule(current, instruction, image, mime)
@@ -569,10 +583,10 @@ async def cb_ai_ok(call: CallbackQuery, state: FSMContext):
     pending = data.get("pending")
     if pending is None:
         return await call.answer("Это предложение уже неактуально")
-    storage.replace_lessons(call.from_user.id, pending)
+    await storage.replace_lessons(call.from_user.id, pending)
     await state.clear()
     await call.message.edit_reply_markup(reply_markup=None)
-    for part in chunks(fmt_week(lessons_of(call.from_user.id), "✅ <b>Сохранено!</b>")):
+    for part in chunks(fmt_week(await lessons_of(call.from_user.id), "✅ <b>Сохранено!</b>")):
         await call.message.answer(part, parse_mode="HTML")
     await call.answer()
 
@@ -592,13 +606,20 @@ async def on_text(message: Message, state: FSMContext):
 
 
 # =====================================================================
+def build_dispatcher(fsm_storage=None) -> Dispatcher:
+    dp = Dispatcher(storage=fsm_storage) if fsm_storage else Dispatcher()
+    dp.include_router(router)
+    return dp
+
+
 async def main():
+    """Локальный запуск (long polling)."""
     logging.basicConfig(level=logging.INFO)
     bot = Bot(token=BOT_TOKEN)
-    dp = Dispatcher()
-    dp.include_router(router)
+    await bot.delete_webhook()
+    dp = build_dispatcher()
     asyncio.create_task(reminder_loop(bot))
-    print("🚀 Личный бот расписания запущен")
+    print("🚀 Личный бот расписания запущен (polling)")
     await dp.start_polling(bot)
 
 

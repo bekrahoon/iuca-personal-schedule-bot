@@ -1,0 +1,15 @@
+name: reminders
+# Бесплатный "будильник": раз в 5 минут дёргает бота, чтобы он разослал напоминания о парах.
+# GitHub может задерживать запуск на несколько минут — поэтому бот шлёт напоминание,
+# если до пары осталось меньше выбранного времени, и не дублирует уже отправленные.
+on:
+  schedule:
+    - cron: "*/5 0-12 * * 1-6"   # Пн–Сб, 6:00–18:59 по Бишкеку (UTC+6)
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl -fsS --max-time 50 "${BOT_URL:-https://iuca-personal-schedule-bot.vercel.app}/api/remind"
+        env:
+          BOT_URL: ${{ vars.BOT_URL }}

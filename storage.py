@@ -1,14 +1,17 @@
-"""Хранилище личных расписаний: один JSON-файл на пользователя в папке data/."""
+"""
+Хранилище личных расписаний.
+- Если задан BLOB_READ_WRITE_TOKEN (Vercel) — данные лежат в приватном Vercel Blob.
+- Иначе — JSON-файлы в папке data/ (локальный запуск).
+"""
 import json
 import os
-import threading
 import uuid
 from pathlib import Path
 
+USE_BLOB = bool(os.environ.get("BLOB_READ_WRITE_TOKEN"))
 DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).parent / "data"))
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-_lock = threading.Lock()
+if not USE_BLOB:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 TIME_SLOTS = [
     "8:00 - 9:20",
@@ -20,38 +23,90 @@ TIME_SLOTS = [
 ]
 
 
-def _path(user_id: int) -> Path:
-    return DATA_DIR / f"{user_id}.json"
-
-
-def _default() -> dict:
-    return {"lessons": [], "remind": 0}
-
-
-def load(user_id: int) -> dict:
-    p = _path(user_id)
+# ---------------------------------------------------------------------
+# Низкоуровневое key-value: key -> dict
+# ---------------------------------------------------------------------
+async def kv_get(key: str) -> dict | None:
+    if USE_BLOB:
+        from vercel.blob import BlobNotFoundError, get_blob
+        try:
+            res = await get_blob(f"{key}.json", access="private")
+            return json.loads(res.body)
+        except BlobNotFoundError:
+            return None
+    p = DATA_DIR / f"{key}.json"
     if not p.exists():
-        return _default()
+        return None
     try:
-        with open(p, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        data.setdefault("lessons", [])
-        data.setdefault("remind", 0)
-        return data
+        return json.loads(p.read_text(encoding="utf-8"))
     except Exception:
-        return _default()
+        return None
 
 
-def save(user_id: int, data: dict) -> None:
-    with _lock:
-        tmp = _path(user_id).with_suffix(".tmp")
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        tmp.replace(_path(user_id))
+async def kv_set(key: str, value: dict) -> None:
+    raw = json.dumps(value, ensure_ascii=False).encode()
+    if USE_BLOB:
+        from vercel.blob import put_blob
+        await put_blob(
+            f"{key}.json", raw, access="private", content_type="application/json",
+            allow_overwrite=True, cache_control_max_age=60,
+        )
+        return
+    p = DATA_DIR / f"{key}.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(".tmp")
+    tmp.write_bytes(raw)
+    tmp.replace(p)
 
 
-def all_user_ids() -> list[int]:
-    return [int(p.stem) for p in DATA_DIR.glob("*.json") if p.stem.isdigit()]
+async def kv_delete(key: str) -> None:
+    if USE_BLOB:
+        from vercel.blob import BlobNotFoundError, delete_blob
+        try:
+            await delete_blob(f"{key}.json")
+        except BlobNotFoundError:
+            pass
+        return
+    (DATA_DIR / f"{key}.json").unlink(missing_ok=True)
+
+
+async def kv_keys(prefix: str) -> list[str]:
+    if USE_BLOB:
+        from vercel.blob import query_blobs
+        out = []
+        async for b in query_blobs(prefix=prefix):
+            if b.pathname.endswith(".json"):
+                out.append(b.pathname[:-5])
+        return out
+    base = DATA_DIR / prefix
+    return [f"{prefix}{p.stem}" for p in base.glob("*.json")] if base.exists() else []
+
+
+# ---------------------------------------------------------------------
+# Пользовательские данные
+# ---------------------------------------------------------------------
+def _default() -> dict:
+    return {"lessons": [], "remind": 0, "sent": {}}
+
+
+async def load(user_id: int) -> dict:
+    data = await kv_get(f"users/{user_id}") or _default()
+    for k, v in _default().items():
+        data.setdefault(k, v)
+    return data
+
+
+async def save(user_id: int, data: dict) -> None:
+    await kv_set(f"users/{user_id}", data)
+
+
+async def all_user_ids() -> list[int]:
+    ids = []
+    for k in await kv_keys("users/"):
+        tail = k.rsplit("/", 1)[-1]
+        if tail.isdigit():
+            ids.append(int(tail))
+    return ids
 
 
 # ---------------------------------------------------------------------
@@ -84,9 +139,9 @@ def make_lesson(d: int, t: str, s: str, r: str = "", e: str = "", note: str = ""
         "d": int(d),
         "t": normalize_time(t),
         "s": s.strip(),
-        "r": r.strip(),
-        "e": e.strip(),
-        "note": note.strip(),
+        "r": (r or "").strip(),
+        "e": (e or "").strip(),
+        "note": (note or "").strip(),
     }
 
 
@@ -98,9 +153,9 @@ def sort_lessons(lessons: list[dict]) -> list[dict]:
     return sorted(lessons, key=lambda x: (x["d"], start_minutes(x["t"])))
 
 
-def add_lessons(user_id: int, new: list[dict]) -> int:
+async def add_lessons(user_id: int, new: list[dict]) -> int:
     """Добавляет пары, пропуская точные дубликаты. Возвращает число добавленных."""
-    data = load(user_id)
+    data = await load(user_id)
     existing = {lesson_key(x) for x in data["lessons"]}
     added = 0
     for x in new:
@@ -109,27 +164,27 @@ def add_lessons(user_id: int, new: list[dict]) -> int:
             existing.add(lesson_key(x))
             added += 1
     data["lessons"] = sort_lessons(data["lessons"])
-    save(user_id, data)
+    await save(user_id, data)
     return added
 
 
-def delete_lesson(user_id: int, lesson_id: str) -> dict | None:
-    data = load(user_id)
+async def delete_lesson(user_id: int, lesson_id: str) -> dict | None:
+    data = await load(user_id)
     for i, x in enumerate(data["lessons"]):
         if x["id"] == lesson_id:
             removed = data["lessons"].pop(i)
-            save(user_id, data)
+            await save(user_id, data)
             return removed
     return None
 
 
-def replace_lessons(user_id: int, lessons: list[dict]) -> None:
-    data = load(user_id)
+async def replace_lessons(user_id: int, lessons: list[dict]) -> None:
+    data = await load(user_id)
     data["lessons"] = sort_lessons(lessons)
-    save(user_id, data)
+    await save(user_id, data)
 
 
-def set_remind(user_id: int, minutes: int) -> None:
-    data = load(user_id)
+async def set_remind(user_id: int, minutes: int) -> None:
+    data = await load(user_id)
     data["remind"] = minutes
-    save(user_id, data)
+    await save(user_id, data)

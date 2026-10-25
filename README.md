@@ -24,13 +24,22 @@
 
 | Файл | Что внутри |
 |---|---|
-| `bot.py` | хендлеры, меню, напоминания |
+| `bot.py` | хендлеры, меню, логика напоминаний; `python bot.py` — локальный запуск (polling) |
+| `app.py` | точка входа для Vercel: `/api/webhook`, `/api/remind`, `/api/setup` |
 | `ai_editor.py` | разбор фото/команд через Gemini (JSON по схеме) |
-| `storage.py` | хранение: `data/<telegram_id>.json` |
+| `storage.py` | хранение: Vercel Blob (если есть `BLOB_READ_WRITE_TOKEN`) или `data/*.json` локально |
+| `fsm_storage.py` | состояния диалогов aiogram в том же хранилище (нужно для serverless) |
 | `iuca_schedule.json` | общее расписание IUCA (из tgbotiuca), для поиска предметов |
+| `.github/workflows/reminders.yml` | раз в 5 минут дёргает `/api/remind` — бесплатные напоминания |
 
 Когда в универе обновят расписание — просто замени `iuca_schedule.json` (формат тот же, что в tgbotiuca). Твоё личное расписание при этом не пострадает.
 
-## Деплой
+## Деплой на Vercel (бесплатно)
 
-Подойдёт любой сервер/VPS или тот же Azure App Service, что в исходном репо: команда запуска `python bot.py`, переменные окружения — как в `.env.example`. Папка `data/` должна сохраняться между перезапусками (или задай `DATA_DIR` на постоянный диск).
+Проект подключён к этому репо: каждый пуш в `main` деплоится автоматически.
+
+Переменные окружения в Vercel: `BOT_TOKEN`, `WEBHOOK_SECRET`, `GEMINI_API_KEY`, `OWNER_ID` (необязательно), `BLOB_READ_WRITE_TOKEN` (создаётся автоматически при подключении Blob-хранилища).
+
+После смены домена или токена один раз открой `https://<домен>/api/setup?key=<WEBHOOK_SECRET>` — это заново регистрирует webhook в Telegram.
+
+Напоминания: GitHub Actions cron бесплатный, но может опаздывать на несколько минут — поэтому лучше ставить напоминание «за 15 мин».
