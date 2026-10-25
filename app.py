@@ -24,7 +24,10 @@ def _check(secret: str | None) -> None:
 
 @app.get("/")
 async def health():
-    return {"ok": True, "bot": "iuca-personal-schedule"}
+    import storage
+    missing = [k for k in ("BOT_TOKEN", "WEBHOOK_SECRET", "BLOB_READ_WRITE_TOKEN", "GEMINI_API_KEY") if not os.environ.get(k)]
+    return {"ok": not missing[:3] or missing == ["GEMINI_API_KEY"], "bot": "iuca-personal-schedule",
+            "missing_env": missing, "storage": "vercel-blob" if storage.USE_BLOB else "local (НЕ сохранится!)"}
 
 
 @app.post("/api/webhook")

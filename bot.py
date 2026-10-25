@@ -43,9 +43,7 @@ from storage import TIME_SLOTS, make_lesson, start_minutes
 # =====================================================================
 # НАСТРОЙКИ
 # =====================================================================
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-if not BOT_TOKEN:
-    raise RuntimeError("BOT_TOKEN environment variable is not set")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 
 # Если задан — ботом может пользоваться только этот Telegram ID (личный бот).
 OWNER_ID = int(os.environ["OWNER_ID"]) if os.environ.get("OWNER_ID") else None
@@ -614,6 +612,8 @@ def build_dispatcher(fsm_storage=None) -> Dispatcher:
 
 async def main():
     """Локальный запуск (long polling)."""
+    if not BOT_TOKEN:
+        raise RuntimeError("BOT_TOKEN environment variable is not set")
     logging.basicConfig(level=logging.INFO)
     bot = Bot(token=BOT_TOKEN)
     await bot.delete_webhook()
