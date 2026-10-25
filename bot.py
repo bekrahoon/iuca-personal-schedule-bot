@@ -83,6 +83,8 @@ def fmt_lesson(x: dict, idx: int | None = None) -> str:
         lines.append(f"👤 {escape(x['e'])}")
     if x.get("note"):
         lines.append(f"📝 <i>{escape(x['note'])}</i>")
+    if x.get("mute"):
+        lines.append("🔕 <i>без напоминания</i>")
     return "\n".join(lines)
 
 
@@ -479,20 +481,94 @@ async def cb_section_add(call: CallbackQuery):
 @router.message(F.text == BTN_REMIND)
 async def remind_menu(message: Message, state: FSMContext):
     await state.clear()
-    cur = (await storage.load(message.from_user.id))["remind"]
+    await message.answer(**await remind_view(message.from_user.id))
+
+
+async def remind_view(uid: int) -> dict:
+    data = await storage.load(uid)
+    cur = data["remind"]
+    total = len(data["lessons"])
+    on = sum(1 for x in data["lessons"] if not x.get("mute"))
     b = InlineKeyboardBuilder()
     for m in (0, 5, 10, 15, 30):
-        label = "Выкл" if m == 0 else f"за {m} мин"
+        label = "Выкл" if m == 0 else f"{m} мин"
         b.button(text=("✅ " if m == cur else "") + label, callback_data=f"rem:{m}")
     b.adjust(5)
-    await message.answer("🔔 Напоминать перед парой:", reply_markup=b.as_markup())
+    b.row(InlineKeyboardButton(text=f"🎯 Выбрать пары ({on}/{total})", callback_data=f"rsd:{min(now_kg().weekday(), 5)}"))
+    text = "🔔 <b>Напоминания</b>\n\n"
+    text += "Сейчас: выключены" if not cur else f"Сейчас: за <b>{cur} мин</b> до пары"
+    text += f"\nНапоминаю о <b>{on}</b> из {total} пар. Нажми «🎯 Выбрать пары», чтобы включить/выключить конкретные."
+    return {"text": text, "reply_markup": b.as_markup(), "parse_mode": "HTML"}
 
 
 @router.callback_query(F.data.startswith("rem:"))
 async def cb_remind(call: CallbackQuery):
     m = int(call.data.split(":")[1])
     await storage.set_remind(call.from_user.id, m)
-    await call.message.edit_text("🔕 Напоминания выключены" if m == 0 else f"🔔 Буду напоминать за {m} мин до пары")
+    try:
+        await call.message.edit_text(**await remind_view(call.from_user.id))
+    except Exception:
+        pass
+    await call.answer("Выключено" if m == 0 else f"За {m} мин")
+
+
+async def remind_pick_view(uid: int, d: int) -> dict:
+    lessons = [x for x in await lessons_of(uid) if x["d"] == d]
+    b = InlineKeyboardBuilder()
+    for x in lessons:
+        icon = "🔕" if x.get("mute") else "🔔"
+        b.row(InlineKeyboardButton(text=f"{icon} {x['t'].split(' ')[0]} {x['s'][:30]}", callback_data=f"rtog:{d}:{x['id']}"))
+    if lessons:
+        b.row(
+            InlineKeyboardButton(text="🔔 Все в этот день", callback_data=f"rall:{d}:1"),
+            InlineKeyboardButton(text="🔕 Ни одной", callback_data=f"rall:{d}:0"),
+        )
+    b.row(*[
+        InlineKeyboardButton(text=f"• {n} •" if i == d else n, callback_data=f"rsd:{i}")
+        for i, n in enumerate(DAYS_SHORT)
+    ])
+    b.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="rback"))
+    text = f"🎯 <b>{DAYS_RU[d]}</b> — нажми на пару, чтобы включить 🔔 или выключить 🔕 напоминание."
+    if not lessons:
+        text = f"🎯 <b>{DAYS_RU[d]}</b> — пар нет."
+    return {"text": text, "reply_markup": b.as_markup(), "parse_mode": "HTML"}
+
+
+async def _edit(call: CallbackQuery, view: dict):
+    try:
+        await call.message.edit_text(**view)
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data.startswith("rsd:"))
+async def cb_remind_day(call: CallbackQuery):
+    await _edit(call, await remind_pick_view(call.from_user.id, int(call.data.split(":")[1])))
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("rtog:"))
+async def cb_remind_toggle(call: CallbackQuery):
+    _, d, lid = call.data.split(":")
+    x = await storage.toggle_mute(call.from_user.id, lid)
+    await _edit(call, await remind_pick_view(call.from_user.id, int(d)))
+    if x:
+        await call.answer(("🔕 Не напоминать: " if x.get("mute") else "🔔 Напоминать: ") + x["s"][:40])
+    else:
+        await call.answer()
+
+
+@router.callback_query(F.data.startswith("rall:"))
+async def cb_remind_all(call: CallbackQuery):
+    _, d, on = call.data.split(":")
+    await storage.set_mute_day(call.from_user.id, int(d), mute=(on == "0"))
+    await _edit(call, await remind_pick_view(call.from_user.id, int(d)))
+    await call.answer()
+
+
+@router.callback_query(F.data == "rback")
+async def cb_remind_back(call: CallbackQuery):
+    await _edit(call, await remind_view(call.from_user.id))
     await call.answer()
 
 
@@ -512,7 +588,7 @@ async def check_reminders(bot: Bot) -> int:
         changed = False
         for x in data["lessons"]:
             left = start_minutes(x["t"]) - cur
-            if x["d"] == now.weekday() and 0 < left <= m and x["id"] not in sent_today:
+            if x["d"] == now.weekday() and not x.get("mute") and 0 < left <= m and x["id"] not in sent_today:
                 try:
                     await bot.send_message(uid, f"🔔 Через {left} мин:\n\n" + fmt_lesson(x), parse_mode="HTML")
                     sent_count += 1
@@ -567,7 +643,8 @@ async def on_json_import(message: Message, state: FSMContext, bot: Bot):
         raw = json.loads(buf.getvalue().decode("utf-8-sig"))
         items = raw["lessons"] if isinstance(raw, dict) else raw
         new = [
-            make_lesson(x["d"], x["t"], x["s"], x.get("r", ""), x.get("e", ""), x.get("note", ""))
+            {**make_lesson(x["d"], x["t"], x["s"], x.get("r", ""), x.get("e", ""), x.get("note", "")),
+             **({"mute": True} if x.get("mute") else {})}
             for x in items
             if 0 <= int(x["d"]) <= 5
         ]

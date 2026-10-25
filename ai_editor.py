@@ -89,7 +89,8 @@ async def edit_schedule(
         ),
     )
     raw = json.loads(resp.text)
-    old_ids = {x["id"] for x in current}
+    old_by_id = {x["id"]: x for x in current}
+    old_ids = set(old_by_id)
 
     result = []
     for x in raw.get("lessons", []):
@@ -101,5 +102,7 @@ async def edit_schedule(
             continue
         if x.get("id") in old_ids:
             lesson["id"] = x["id"]
+            if old_by_id[x["id"]].get("mute"):
+                lesson["mute"] = True  # сохраняем выключенное напоминание
         result.append(lesson)
     return result, raw.get("summary", "")

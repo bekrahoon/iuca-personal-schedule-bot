@@ -193,3 +193,27 @@ async def set_remind(user_id: int, minutes: int) -> None:
     data = await load(user_id)
     data["remind"] = minutes
     await save(user_id, data)
+
+
+async def toggle_mute(user_id: int, lesson_id: str) -> dict | None:
+    data = await load(user_id)
+    for x in data["lessons"]:
+        if x["id"] == lesson_id:
+            if x.get("mute"):
+                x.pop("mute")
+            else:
+                x["mute"] = True
+            await save(user_id, data)
+            return x
+    return None
+
+
+async def set_mute_day(user_id: int, d: int, mute: bool) -> None:
+    data = await load(user_id)
+    for x in data["lessons"]:
+        if x["d"] == d:
+            if mute:
+                x["mute"] = True
+            else:
+                x.pop("mute", None)
+    await save(user_id, data)
