@@ -18,6 +18,17 @@ dp = botmod.build_dispatcher(KVStorage())
 app = FastAPI()
 
 
+@app.middleware("http")
+async def vercel_headers(request: Request, call_next):
+    """Передаём заголовки запроса в Vercel SDK — из них берётся OIDC-токен для Blob."""
+    try:
+        from vercel.headers import set_headers
+        set_headers(dict(request.headers))
+    except Exception:
+        pass
+    return await call_next(request)
+
+
 @app.exception_handler(Exception)
 async def show_error(request: Request, exc: Exception):
     logging.exception("unhandled error")
@@ -32,8 +43,10 @@ def _check(secret: str | None) -> None:
 @app.get("/")
 async def health():
     import storage
-    missing = [k for k in ("BOT_TOKEN", "WEBHOOK_SECRET", "BLOB_READ_WRITE_TOKEN", "GEMINI_API_KEY") if not os.environ.get(k)]
-    return {"ok": not missing[:3] or missing == ["GEMINI_API_KEY"], "bot": "iuca-personal-schedule",
+    missing = [k for k in ("BOT_TOKEN", "WEBHOOK_SECRET", "GEMINI_API_KEY") if not os.environ.get(k)]
+    if not storage.USE_BLOB:
+        missing.append("Blob storage (BLOB_STORE_ID / BLOB_READ_WRITE_TOKEN)")
+    return {"ok": all(m == "GEMINI_API_KEY" for m in missing), "bot": "iuca-personal-schedule",
             "missing_env": missing, "storage": "vercel-blob" if storage.USE_BLOB else "local (НЕ сохранится!)"}
 
 

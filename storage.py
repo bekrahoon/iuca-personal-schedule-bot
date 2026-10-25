@@ -8,10 +8,15 @@ import os
 import uuid
 from pathlib import Path
 
-USE_BLOB = bool(os.environ.get("BLOB_READ_WRITE_TOKEN"))
-DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).parent / "data"))
-if not USE_BLOB:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+BLOB_ENV_VARS = ("BLOB_READ_WRITE_TOKEN", "VERCEL_BLOB_READ_WRITE_TOKEN", "BLOB_STORE_ID")
+USE_BLOB = any(os.environ.get(k) for k in BLOB_ENV_VARS)
+
+if os.environ.get("DATA_DIR"):
+    DATA_DIR = Path(os.environ["DATA_DIR"])
+elif os.environ.get("VERCEL"):
+    DATA_DIR = Path("/tmp/data")  # на Vercel писать можно только в /tmp (и он не сохраняется)
+else:
+    DATA_DIR = Path(__file__).parent / "data"
 
 TIME_SLOTS = [
     "8:00 - 9:20",
