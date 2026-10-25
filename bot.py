@@ -558,6 +558,31 @@ async def run_ai_edit(message: Message, state: FSMContext, instruction: str, ima
     await wait.edit_text(text[:4000], reply_markup=confirm_kb(), parse_mode="HTML")
 
 
+@router.message(F.document.file_name.lower().endswith(".json"))
+async def on_json_import(message: Message, state: FSMContext, bot: Bot):
+    """Импорт расписания из JSON-файла (формат как у /export)."""
+    buf = io.BytesIO()
+    await bot.download(message.document, destination=buf)
+    try:
+        raw = json.loads(buf.getvalue().decode("utf-8-sig"))
+        items = raw["lessons"] if isinstance(raw, dict) else raw
+        new = [
+            make_lesson(x["d"], x["t"], x["s"], x.get("r", ""), x.get("e", ""), x.get("note", ""))
+            for x in items
+            if 0 <= int(x["d"]) <= 5
+        ]
+    except Exception as e:
+        return await message.answer(f"❌ Не смог прочитать файл: {escape(str(e))[:200]}", parse_mode="HTML")
+    current = await lessons_of(message.from_user.id)
+    await state.set_state(AiConfirm.waiting)
+    await state.update_data(pending=new)
+    await message.answer(
+        (f"📥 В файле {len(new)} пар. Заменить ими текущее расписание?\n\n<b>Изменения:</b>\n" + fmt_diff(current, new))[:4000],
+        reply_markup=confirm_kb(),
+        parse_mode="HTML",
+    )
+
+
 @router.message(F.photo)
 async def on_photo(message: Message, state: FSMContext, bot: Bot):
     buf = io.BytesIO()
