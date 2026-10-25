@@ -6,6 +6,7 @@ import os
 from aiogram import Bot
 from aiogram.types import BotCommand, Update
 from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import JSONResponse
 
 import bot as botmod
 from fsm_storage import KVStorage
@@ -15,6 +16,12 @@ logging.basicConfig(level=logging.INFO)
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
 dp = botmod.build_dispatcher(KVStorage())
 app = FastAPI()
+
+
+@app.exception_handler(Exception)
+async def show_error(request: Request, exc: Exception):
+    logging.exception("unhandled error")
+    return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"[:500]})
 
 
 def _check(secret: str | None) -> None:
