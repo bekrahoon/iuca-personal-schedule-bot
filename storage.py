@@ -152,6 +152,7 @@ _plan_cache: dict = {"t": 0.0, "plan": None}
 def _plan_entry(data: dict) -> dict:
     return {
         "remind": data.get("remind", 0),
+        "rs": data.get("remind_by_subject", {}),
         "lessons": [
             {k: x[k] for k in ("id", "d", "t", "s", "r", "e", "note", "mute", "date", "once") if k in x}
             for x in data.get("lessons", [])
@@ -290,6 +291,35 @@ async def replace_lessons(user_id: int, lessons: list[dict]) -> None:
 async def set_remind(user_id: int, minutes: int) -> None:
     data = await load(user_id)
     data["remind"] = minutes
+    await save(user_id, data)
+
+
+def subject_key(s: str) -> str:
+    import re as _re
+    return _re.sub(r"\(.*?\)", "", s).strip().lower()
+
+
+def remind_minutes(data_or_plan: dict, lesson: dict) -> int:
+    """За сколько минут напоминать об этой паре: 0 — не напоминать.
+    Отдельная пара 🔕 > настройка предмета > общая настройка."""
+    if lesson.get("mute"):
+        return 0
+    rs = data_or_plan.get("remind_by_subject", data_or_plan.get("rs", {})) or {}
+    k = subject_key(lesson["s"])
+    if k in rs:
+        return int(rs[k])
+    return int(data_or_plan.get("remind", 0) or 0)
+
+
+async def set_subject_remind(user_id: int, subject: str, minutes: int | None) -> None:
+    """minutes=None — вернуть «как у всех»."""
+    data = await load(user_id)
+    rs = data.setdefault("remind_by_subject", {})
+    k = subject_key(subject)
+    if minutes is None:
+        rs.pop(k, None)
+    else:
+        rs[k] = minutes
     await save(user_id, data)
 
 
