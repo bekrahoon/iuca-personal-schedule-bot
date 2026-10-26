@@ -364,6 +364,14 @@ router = Router()
 async def owner_only_msg(handler, event, data):
     if OWNER_ID and event.from_user and event.from_user.id != OWNER_ID:
         return
+    # Только личка: в группе расписание и домашку увидели бы все участники
+    if event.chat.type != "private":
+        if event.text and (event.text.startswith("/") or "@" in event.text):
+            try:
+                await event.reply("🔒 Я работаю только в личных сообщениях — там твоё расписание и домашка видны только тебе.")
+            except Exception:
+                pass
+        return
     return await handler(event, data)
 
 
@@ -371,6 +379,9 @@ async def owner_only_msg(handler, event, data):
 async def owner_only_cb(handler, event, data):
     if OWNER_ID and event.from_user.id != OWNER_ID:
         return await event.answer("Это личный бот 🙂")
+    msg = event.message
+    if msg is not None and getattr(msg, "chat", None) is not None and msg.chat.type != "private":
+        return await event.answer("🔒 Только в личных сообщениях", show_alert=True)
     return await handler(event, data)
 
 
