@@ -132,7 +132,75 @@ async def load(user_id: int) -> dict:
 
 async def save(user_id: int, data: dict) -> None:
     data["lessons"] = prune_past(data.get("lessons", []))
+    data.pop("sent", None)  # старое поле — отметки об отправке теперь в sent.json
     await kv_set(f"users/{user_id}", data)
+    await update_plan(user_id, data)
+
+
+# ---------------------------------------------------------------------
+# План напоминаний — один общий файл для всех пользователей.
+# Проверка напоминаний (каждые несколько минут) читает только его, и то из памяти,
+# пока он не устарел: так бесплатного лимита хранилища хватает с запасом.
+# ---------------------------------------------------------------------
+import time as _time
+
+PLAN_KEY = "remind_plan"
+SENT_KEY = "remind_sent"
+_plan_cache: dict = {"t": 0.0, "plan": None}
+
+
+def _plan_entry(data: dict) -> dict:
+    return {
+        "remind": data.get("remind", 0),
+        "lessons": [
+            {k: x[k] for k in ("id", "d", "t", "s", "r", "e", "note", "mute", "date", "once") if k in x}
+            for x in data.get("lessons", [])
+        ],
+        "hw": [
+            {"s": h.get("s", ""), "text": h["text"], "due": h["due"]}
+            for h in data.get("hw", []) if not h.get("done") and h.get("due")
+        ],
+    }
+
+
+async def _read_plan() -> dict:
+    plan = await kv_get(PLAN_KEY)
+    if plan is None:  # первый запуск — собираем из всех пользователей
+        plan = {}
+        for k in await kv_keys("users/"):
+            tail = k.rsplit("/", 1)[-1]
+            if tail.isdigit():
+                plan[tail] = _plan_entry(await load(int(tail)))
+        await kv_set(PLAN_KEY, plan)
+    return plan
+
+
+async def get_plan(max_age: float = 1800) -> dict:
+    if _plan_cache["plan"] is None or _time.time() - _plan_cache["t"] > max_age:
+        _plan_cache["plan"] = await _read_plan()
+        _plan_cache["t"] = _time.time()
+    return _plan_cache["plan"]
+
+
+async def update_plan(user_id: int, data: dict) -> None:
+    entry = _plan_entry(data)
+    plan = await get_plan(max_age=300)
+    if plan.get(str(user_id)) == entry:
+        return
+    plan = await _read_plan()  # свежая копия, чтобы не затереть чужие изменения
+    plan[str(user_id)] = entry
+    await kv_set(PLAN_KEY, plan)
+    _plan_cache["plan"], _plan_cache["t"] = plan, _time.time()
+
+
+async def mark_sent(keys: list[str], today: str) -> list[str]:
+    """Отмечает напоминания отправленными. Возвращает только те, что ещё не были отправлены."""
+    sent = await kv_get(SENT_KEY) or {}
+    done = set(sent.get(today, []))
+    fresh = [k for k in keys if k not in done]
+    if fresh:
+        await kv_set(SENT_KEY, {today: sorted(done | set(fresh))})
+    return fresh
 
 
 async def all_user_ids() -> list[int]:

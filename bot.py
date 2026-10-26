@@ -819,53 +819,55 @@ async def cb_remind_back(call: CallbackQuery):
     await call.answer()
 
 
+_sent_mem: dict[str, set] = {}
+
+
 async def check_reminders(bot: Bot) -> int:
-    """Отправляет напоминания о парах, которые начнутся в ближайшие `remind` минут.
-    Можно вызывать с любой периодичностью: уже отправленные не дублируются."""
+    """Отправляет напоминания о парах и вечернюю сводку по домашке.
+    Можно вызывать с любой периодичностью: уже отправленное не дублируется.
+    Обычный вызов (нечего отправлять) не трогает хранилище вообще — план читается из памяти."""
     now = now_kg()
     cur = now.hour * 60 + now.minute
     today = now.date().isoformat()
-    sent_count = 0
-    for uid in await storage.all_user_ids():
-        data = await storage.load(uid)
-        # вечером (с 20:00) — одно сообщение о домашке на завтра
-        if now.hour >= 20 and data.get("hw_digest") != today:
-            tomorrow = now.date() + timedelta(days=1)
-            due = hwlib.due_on(data.get("hw", []), tomorrow)
-            data["hw_digest"] = today
-            await storage.save(uid, data)
+    tomorrow = (now.date() + timedelta(days=1)).isoformat()
+    plan = await storage.get_plan()
+
+    todo: list[tuple[str, int, str, InlineKeyboardMarkup | None]] = []  # (ключ, uid, текст, кнопки)
+    for uid_s, p in plan.items():
+        uid = int(uid_s)
+        m = p.get("remind", 0)
+        if m and now.weekday() <= 5:
+            for x in lessons_on(p.get("lessons", []), now.date()):
+                if x.get("_cancel") or x.get("mute"):
+                    continue
+                left = start_minutes(x["t"]) - cur
+                if 0 < left <= m:
+                    todo.append((f"{uid}:{x['id']}", uid, f"🔔 <b>Через {left} мин</b>\n" + fmt_card(x), None))
+        if now.hour >= 20:
+            due = [h for h in p.get("hw", []) if h.get("due") == tomorrow]
             if due:
                 lines = [f"• <b>{escape(h.get('s') or 'Без предмета')}</b> — {escape(h['text'])}" for h in due]
-                try:
-                    await bot.send_message(
-                        uid, "📝 <b>На завтра задано:</b>\n\n" + "\n".join(lines),
-                        parse_mode="HTML",
-                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                            InlineKeyboardButton(text="📝 Открыть домашку", callback_data="hwlist")]]),
-                    )
-                    sent_count += 1
-                except Exception:
-                    logging.exception("hw digest failed")
-        m = data.get("remind", 0)
-        if not m or now.weekday() > 5:
+                kb = InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text="📝 Открыть домашку", callback_data="hwlist")]])
+                todo.append((f"{uid}:hw", uid, "📝 <b>На завтра задано:</b>\n\n" + "\n".join(lines), kb))
+
+    mem = _sent_mem.setdefault(today, set())
+    for old in [k for k in _sent_mem if k != today]:
+        _sent_mem.pop(old)
+    todo = [t for t in todo if t[0] not in mem]
+    if not todo:
+        return 0
+    fresh = set(await storage.mark_sent([k for k, *_ in todo], today))
+    mem.update(k for k, *_ in todo)
+    sent_count = 0
+    for key, uid, text, kb in todo:
+        if key not in fresh:
             continue
-        sent_today = set(data.get("sent", {}).get(today, []))
-        changed = False
-        for x in lessons_on(data["lessons"], now.date()):
-            if x.get("_cancel"):
-                continue
-            left = start_minutes(x["t"]) - cur
-            if x["d"] == now.weekday() and not x.get("mute") and 0 < left <= m and x["id"] not in sent_today:
-                try:
-                    await bot.send_message(uid, f"🔔 <b>Через {left} мин</b>\n" + fmt_card(x), parse_mode="HTML")
-                    sent_count += 1
-                except Exception:
-                    logging.exception("reminder send failed")
-                sent_today.add(x["id"])
-                changed = True
-        if changed:
-            data["sent"] = {today: sorted(sent_today)}
-            await storage.save(uid, data)
+        try:
+            await bot.send_message(uid, text, parse_mode="HTML", reply_markup=kb)
+            sent_count += 1
+        except Exception:
+            logging.exception("reminder send failed")
     return sent_count
 
 
