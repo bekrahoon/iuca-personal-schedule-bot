@@ -22,6 +22,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
     BufferedInputFile,
     CallbackQuery,
+    InputMediaPhoto,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     KeyboardButton,
@@ -36,6 +37,7 @@ try:
 except ImportError:
     pass
 
+import render
 import storage
 from ai_editor import AIBusyError, ai_enabled, edit_schedule
 from storage import TIME_SLOTS, lessons_on, make_lesson, next_date_for_weekday, normalize_extras, start_minutes
@@ -119,20 +121,93 @@ def fmt_lesson(x: dict, idx: int | None = None, base_view: bool = False) -> str:
     return "\n".join(lines)
 
 
+MONTHS_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля",
+              "августа", "сентября", "октября", "ноября", "декабря"]
+
+
+def fmt_card(x: dict, base_view: bool = False, status: str = "") -> str:
+    """Одна пара — компактная карточка в цитате."""
+    start, _, end = x["t"].partition(" - ")
+    t = f"{start.zfill(5)} – {end.zfill(5)}"
+    if x.get("_cancel"):
+        return f"<blockquote>❌ <s>{t}  {escape(x['s'])}</s>\n<b>Отменена в этот день</b></blockquote>"
+    head = f"{status}<b>{t}</b>  {escape(x['s'])}"
+    info = []
+    if x.get("r"):
+        room = escape(x["r"])
+        info.append(f"📍 <b>{room}</b>" + (" 🔄" if x.get("_changed") else ""))
+    if x.get("e"):
+        info.append(escape(x["e"]))
+    lines = [head]
+    if info:
+        lines.append(" · ".join(info))
+    if x.get("_changed") and not x.get("r"):
+        lines.append("🔄 <i>изменено на этот день</i>")
+    if x.get("note"):
+        lines.append(f"📝 <i>{escape(x['note'])}</i>")
+    if x.get("mute"):
+        lines.append("🔕 <i>без напоминания</i>")
+    if base_view:
+        if x.get("date"):
+            lines.append(f"📅 <i>разовая пара: {ddmm(x['date'])}</i>")
+        for o in x.get("once", []):
+            lines.append(f"↳ <i>{fmt_once(o)}</i>")
+    return "<blockquote>" + "\n".join(lines) + "</blockquote>"
+
+
+def _dur(mins: int) -> str:
+    h, m = divmod(mins, 60)
+    return (f"{h} ч " if h else "") + (f"{m} мин" if m else "").strip() or "0 мин"
+
+
 async def fmt_day(user_id: int, d: int, on_date=None) -> str:
     """on_date — конкретная дата (с разовыми изменениями); None — недельный вид для редактирования."""
     if d > 5:
         return "🎉 <b>Воскресенье</b> — выходной!"
     lessons = await lessons_of(user_id)
-    if on_date is not None:
-        items = lessons_on(lessons, on_date)
-        header = f"📅 <b>{DAYS_RU[d]}, {on_date.strftime('%d.%m')}</b>\n"
-    else:
+    if on_date is None:
         items = [x for x in lessons if x["d"] == d]
-        header = f"📅 <b>{DAYS_RU[d]}</b>\n"
-    if not items:
-        return header + "\n😴 Пар нет!"
-    return header + "\n" + "\n\n".join(fmt_lesson(x, i, base_view=on_date is None) for i, x in enumerate(items, 1))
+        header = f"📅 <b>{DAYS_RU[d]}</b>"
+        if not items:
+            return header + "\n\n😴 Пар нет"
+        return header + "\n\n" + "\n".join(fmt_card(x, base_view=True) for x in items)
+
+    items = lessons_on(lessons, on_date)
+    header = f"📅 <b>{DAYS_RU[d]}, {on_date.day} {MONTHS_GEN[on_date.month - 1]}</b>"
+    real = [x for x in items if not x.get("_cancel")]
+    if not real:
+        body = "\n\n😴 Пар нет — отдыхай!"
+        if items:
+            body += "\n\n" + "\n".join(fmt_card(x) for x in items)
+        return header + body
+    first = real[0]["t"].split(" - ")[0].zfill(5)
+    last = real[-1]["t"].split(" - ")[1].zfill(5)
+    header += f"\n<i>{render.plural_pairs(len(real))} · {first} – {last}</i>"
+
+    now = now_kg()
+    is_today = on_date == now.date()
+    cur = now.hour * 60 + now.minute
+    next_marked = False
+    out = []
+    prev_end = None
+    for x in items:
+        st = start_minutes(x["t"])
+        en = start_minutes(x["t"].split(" - ")[1] + " - 0:00")
+        if prev_end is not None and not x.get("_cancel") and st - prev_end >= 30:
+            out.append(f"☕ <i>окно {_dur(st - prev_end)}</i>")
+        status = ""
+        if is_today and not x.get("_cancel"):
+            if st <= cur < en:
+                status = "▶️ <b>Сейчас</b> · "
+            elif cur < st and not next_marked:
+                status = f"⏭ <b>Через {_dur(st - cur)}</b> · "
+                next_marked = True
+            elif cur >= en:
+                status = "✔️ "
+        out.append(fmt_card(x, status=status))
+        if not x.get("_cancel"):
+            prev_end = en
+    return header + "\n\n" + "\n".join(out)
 
 
 def fmt_week(lessons: list[dict], title: str = "🗓 <b>Моё расписание</b>") -> str:
@@ -341,11 +416,51 @@ async def cb_day(call: CallbackQuery):
     await call.answer()
 
 
+def week_kb(offset: int) -> InlineKeyboardMarkup:
+    mid = "Эта неделя" if offset == 0 else ("Следующая" if offset == 1 else ("Прошлая" if offset == -1 else f"{offset:+d} нед."))
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="◀️", callback_data=f"wk:{offset - 1}"),
+            InlineKeyboardButton(text=mid, callback_data="wk:0"),
+            InlineKeyboardButton(text="▶️", callback_data=f"wk:{offset + 1}"),
+        ],
+        [InlineKeyboardButton(text="📝 Текстом", callback_data="wktxt")],
+    ])
+
+
+async def week_photo(uid: int, offset: int) -> BufferedInputFile:
+    today = now_kg().date()
+    monday = render.week_start(today) + timedelta(weeks=offset)
+    png = await asyncio.to_thread(render.render_week, await lessons_of(uid), monday, today)
+    return BufferedInputFile(png, f"week_{monday.isoformat()}.png")
+
+
 @router.message(F.text == BTN_WEEK)
 async def show_week(message: Message, state: FSMContext):
     await state.clear()
-    for part in chunks(fmt_week(await lessons_of(message.from_user.id))):
-        await message.answer(part, parse_mode="HTML")
+    if not await lessons_of(message.from_user.id):
+        return await message.answer(fmt_week([]), parse_mode="HTML")
+    await message.answer_photo(await week_photo(message.from_user.id, 0), reply_markup=week_kb(0))
+
+
+@router.callback_query(F.data.startswith("wk:"))
+async def cb_week(call: CallbackQuery):
+    offset = max(-8, min(26, int(call.data.split(":")[1])))
+    try:
+        await call.message.edit_media(
+            InputMediaPhoto(media=await week_photo(call.from_user.id, offset)),
+            reply_markup=week_kb(offset),
+        )
+    except Exception:
+        logging.exception("week edit failed")
+    await call.answer()
+
+
+@router.callback_query(F.data == "wktxt")
+async def cb_week_text(call: CallbackQuery):
+    for part in chunks(fmt_week(await lessons_of(call.from_user.id))):
+        await call.message.answer(part, parse_mode="HTML")
+    await call.answer()
 
 
 @router.message(Command("export"))
@@ -652,7 +767,7 @@ async def check_reminders(bot: Bot) -> int:
             left = start_minutes(x["t"]) - cur
             if x["d"] == now.weekday() and not x.get("mute") and 0 < left <= m and x["id"] not in sent_today:
                 try:
-                    await bot.send_message(uid, f"🔔 Через {left} мин:\n\n" + fmt_lesson(x), parse_mode="HTML")
+                    await bot.send_message(uid, f"🔔 <b>Через {left} мин</b>\n" + fmt_card(x), parse_mode="HTML")
                     sent_count += 1
                 except Exception:
                     logging.exception("reminder send failed")
