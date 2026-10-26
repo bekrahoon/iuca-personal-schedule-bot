@@ -40,6 +40,7 @@ except ImportError:
 import render
 import storage
 from ai_editor import AIBusyError, ai_enabled, edit_schedule
+from quick_edit import quick_edit
 from storage import TIME_SLOTS, lessons_on, make_lesson, next_date_for_weekday, normalize_extras, start_minutes
 
 # =====================================================================
@@ -842,6 +843,17 @@ async def reminder_loop(bot: Bot):
 # РЕДАКТИРОВАНИЕ ЧЕРЕЗ GEMINI (ФОТО / ТЕКСТ)
 # =====================================================================
 async def run_ai_edit(message: Message, state: FSMContext, instruction: str, image: bytes | None, mime: str):
+    # 1) Частые сообщения (смена аудитории / отмена на дату) разбираем сами — мгновенно и без Gemini
+    if image is None and instruction:
+        current = await lessons_of(message.from_user.id)
+        quick = quick_edit(instruction, current, now_kg().date())
+        if quick:
+            new, summary = quick
+            await state.set_state(AiConfirm.waiting)
+            await state.update_data(pending=new)
+            text = f"⚡ {escape(summary)}\n\n<b>Изменения:</b>\n" + fmt_diff(current, new)
+            return await message.answer(text[:4000], reply_markup=confirm_kb(), parse_mode="HTML")
+    # 2) Всё остальное (фото, сложные формулировки) — через Gemini
     if not ai_enabled():
         return await message.answer("⚠️ Для этого нужен GEMINI_API_KEY в переменных окружения.")
     current = await lessons_of(message.from_user.id)
@@ -937,9 +949,30 @@ async def on_text(message: Message, state: FSMContext):
 
 
 # =====================================================================
+async def on_error(event) -> bool:
+    """Любая ошибка — не молчим, а говорим пользователю."""
+    logging.exception("handler error", exc_info=event.exception)
+    upd = event.update
+    err = f"{type(event.exception).__name__}: {event.exception}"[:300]
+    try:
+        if upd.callback_query:
+            await upd.callback_query.answer("⚠️ Ошибка, попробуй ещё раз", show_alert=False)
+            chat_id = upd.callback_query.from_user.id
+        elif upd.message:
+            chat_id = upd.message.chat.id
+        else:
+            return True
+        await upd.bot.send_message(chat_id, f"⚠️ Что-то пошло не так, попробуй ещё раз.\n<code>{escape(err)}</code>",
+                                   parse_mode="HTML")
+    except Exception:
+        logging.exception("error handler failed")
+    return True
+
+
 def build_dispatcher(fsm_storage=None) -> Dispatcher:
     dp = Dispatcher(storage=fsm_storage) if fsm_storage else Dispatcher()
     dp.include_router(router)
+    dp.errors.register(on_error)
     return dp
 
 
