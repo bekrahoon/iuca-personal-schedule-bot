@@ -6,13 +6,8 @@ import os
 
 from storage import TIME_SLOTS, make_lesson, normalize_extras, today_kg
 
-MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
-# Запасные модели — если основная перегружена (503) или упёрлась в лимит (429)
-FALLBACK_MODELS = [
-    m.strip()
-    for m in os.environ.get("GEMINI_FALLBACK_MODELS", "gemini-3.6-flash,gemini-3.5-flash-lite").split(",")
-    if m.strip()
-]
+# Только Flash-Lite 3.5 — самая быстрая модель; без запасных моделей
+MODEL = "gemini-3.5-flash-lite"
 _client = None  # google.genai импортируется лениво — он тяжёлый, а нужен только для фото/команд
 
 DAYS_RU = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
@@ -110,11 +105,11 @@ def _is_busy(e: Exception) -> bool:
 
 async def _generate(parts: list, config):
     last: Exception | None = None
-    for i, model in enumerate([MODEL, MODEL, *FALLBACK_MODELS]):
+    for i, model in enumerate([MODEL, MODEL]):  # одна повторная попытка, если перегружена
         try:
             return await asyncio.wait_for(
                 _get_client().aio.models.generate_content(model=model, contents=parts, config=config),
-                timeout=25,
+                timeout=20,
             )
         except asyncio.TimeoutError as e:
             last = e
@@ -125,7 +120,7 @@ async def _generate(parts: list, config):
             last = e
             logging.warning("Gemini %s busy: %s", model, e)
             if i == 0:
-                await asyncio.sleep(2)
+                await asyncio.sleep(1)
     raise AIBusyError(str(last))
 
 
