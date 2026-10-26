@@ -749,114 +749,57 @@ def mins_text(m: int) -> str:
 async def remind_view(uid: int) -> dict:
     data = await storage.load(uid)
     cur = data["remind"]
-    rs = data.get("remind_by_subject", {})
-    lessons = data["lessons"]
+    lessons = [x for x in data["lessons"] if not x.get("date")]
     on = sum(1 for x in lessons if storage.remind_minutes(data, x))
+    custom = [x for x in lessons if "rm" in x or x.get("mute")]
     b = InlineKeyboardBuilder()
     for m in REMIND_OPTIONS:
         b.button(text=("✅ " if m == cur else "") + mins_label(m), callback_data=f"rem:{m}")
     b.adjust(4, 3)
-    b.row(InlineKeyboardButton(text=f"📚 По предметам{f' ({len(rs)} настроено)' if rs else ''}", callback_data="rsubs"))
-    b.row(InlineKeyboardButton(text="🎯 Отдельные пары", callback_data=f"rsd:{min(now_kg().weekday(), 5)}"))
+    b.row(InlineKeyboardButton(text="⏰ Настроить каждую пару", callback_data=f"rsd:{min(now_kg().weekday(), 5)}"))
 
     text = "🔔 <b>Напоминания</b>\n\n"
-    text += f"Для всех предметов: <b>{mins_text(cur)}</b>\n"
-    subs = hwlib.subjects(lessons)
-    special = [(s_, rs[storage.subject_key(s_)]) for s_ in subs if storage.subject_key(s_) in rs]
-    if special:
-        text += "\nОтдельно:\n" + "\n".join(f"• {escape(s_)} — <b>{mins_text(m)}</b>" for s_, m in special) + "\n"
+    text += f"По умолчанию: <b>{mins_text(cur)}</b> до пары\n"
+    if custom:
+        text += "\nСвоё время у пар:\n" + "\n".join(
+            f"• {DAYS_SHORT[x['d']]} {x['t'].split(' ')[0]} {escape(x['s'])} — <b>{mins_text(storage.remind_minutes(data, x))}</b>"
+            for x in sorted(custom, key=lambda x: (x["d"], start_minutes(x["t"])))
+        ) + "\n"
     text += f"\nНапоминаю о <b>{on}</b> из {len(lessons)} пар в неделю."
-    text += "\n\n<i>«📚 По предметам» — своё время для предмета (например ML за 1 час). «🎯 Отдельные пары» — выключить конкретную пару.</i>"
+    text += "\n\n<i>«⏰ Настроить каждую пару» — своё время для конкретной пары: например ML в Пн за 1 час, а ML в Пт за 10 мин.</i>"
     return {"text": text, "reply_markup": b.as_markup(), "parse_mode": "HTML"}
-
-
-async def remind_subjects_view(uid: int) -> dict:
-    data = await storage.load(uid)
-    rs = data.get("remind_by_subject", {})
-    b = InlineKeyboardBuilder()
-    for i, name in enumerate(hwlib.subjects(data["lessons"])):
-        k = storage.subject_key(name)
-        val = mins_text(rs[k]) if k in rs else f"как у всех ({mins_text(data['remind'])})"
-        icon = "🔕" if rs.get(k) == 0 else ("🔔" if k in rs else "▫️")
-        b.row(InlineKeyboardButton(text=f"{icon} {name[:24]} — {val}", callback_data=f"rsub:{i}"))
-    b.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="rback"))
-    return {"text": "📚 <b>Напоминания по предметам</b>\n\nВыбери предмет, чтобы задать для него своё время:",
-            "reply_markup": b.as_markup(), "parse_mode": "HTML"}
-
-
-@router.callback_query(F.data == "rsubs")
-async def cb_remind_subjects(call: CallbackQuery):
-    await _edit(call, await remind_subjects_view(call.from_user.id))
-    await call.answer()
-
-
-@router.callback_query(F.data.startswith("rsub:"))
-async def cb_remind_subject(call: CallbackQuery):
-    i = int(call.data.split(":")[1])
-    data = await storage.load(call.from_user.id)
-    subs = hwlib.subjects(data["lessons"])
-    if not 0 <= i < len(subs):
-        return await call.answer("Предмет не найден")
-    name = subs[i]
-    cur = data.get("remind_by_subject", {}).get(storage.subject_key(name))
-    b = InlineKeyboardBuilder()
-    for m in REMIND_OPTIONS:
-        b.button(text=("✅ " if cur == m else "") + mins_label(m), callback_data=f"rsubset:{i}:{m}")
-    b.adjust(4, 3)
-    b.row(InlineKeyboardButton(text=("✅ " if cur is None else "") + f"Как у всех ({mins_text(data['remind'])})",
-                               callback_data=f"rsubset:{i}:-1"))
-    b.row(InlineKeyboardButton(text="⬅️ К предметам", callback_data="rsubs"))
-    await _edit(call, {"text": f"🔔 <b>{escape(name)}</b>\nЗа сколько напоминать перед этой парой?",
-                       "reply_markup": b.as_markup(), "parse_mode": "HTML"})
-    await call.answer()
-
-
-@router.callback_query(F.data.startswith("rsubset:"))
-async def cb_remind_subject_set(call: CallbackQuery):
-    _, i, m = call.data.split(":")
-    data = await storage.load(call.from_user.id)
-    subs = hwlib.subjects(data["lessons"])
-    i, m = int(i), int(m)
-    if not 0 <= i < len(subs):
-        return await call.answer("Предмет не найден")
-    await storage.set_subject_remind(call.from_user.id, subs[i], None if m < 0 else m)
-    await _edit(call, await remind_subjects_view(call.from_user.id))
-    await call.answer(f"{subs[i][:30]}: " + ("как у всех" if m < 0 else mins_text(m)))
 
 
 @router.callback_query(F.data.startswith("rem:"))
 async def cb_remind(call: CallbackQuery):
     m = int(call.data.split(":")[1])
     await storage.set_remind(call.from_user.id, m)
-    try:
-        await call.message.edit_text(**await remind_view(call.from_user.id))
-    except Exception:
-        pass
-    await call.answer("Выключено" if m == 0 else f"За {m} мин")
+    await _edit(call, await remind_view(call.from_user.id))
+    await call.answer("По умолчанию: " + mins_text(m))
 
 
 async def remind_pick_view(uid: int, d: int) -> dict:
     data = await storage.load(uid)
-    lessons = [x for x in data["lessons"] if x["d"] == d]
+    lessons = sorted([x for x in data["lessons"] if x["d"] == d and not x.get("date")],
+                     key=lambda x: start_minutes(x["t"]))
     b = InlineKeyboardBuilder()
     for x in lessons:
         m = storage.remind_minutes(data, x)
-        tail = "" if x.get("mute") or not m else f" · {mins_label(m)}"
-        icon = "🔕" if not m else "🔔"
-        b.row(InlineKeyboardButton(text=f"{icon} {x['t'].split(' ')[0]} {x['s'][:26]}{tail}", callback_data=f"rtog:{d}:{x['id']}"))
-    if lessons:
-        b.row(
-            InlineKeyboardButton(text="🔔 Все в этот день", callback_data=f"rall:{d}:1"),
-            InlineKeyboardButton(text="🔕 Ни одной", callback_data=f"rall:{d}:0"),
-        )
+        own = "rm" in x or x.get("mute")
+        icon = "🔕" if not m else ("⏰" if own else "🔔")
+        val = mins_label(m) if own or not m else f"{mins_label(m)} (по умолч.)"
+        b.row(InlineKeyboardButton(text=f"{icon} {x['t'].split(' ')[0]} {x['s'][:22]} — {val}",
+                                   callback_data=f"rl:{d}:{x['id']}"))
     b.row(*[
         InlineKeyboardButton(text=f"• {n} •" if i == d else n, callback_data=f"rsd:{i}")
         for i, n in enumerate(DAYS_SHORT)
     ])
     b.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="rback"))
-    text = f"🎯 <b>{DAYS_RU[d]}</b> — нажми на пару, чтобы включить 🔔 или выключить 🔕 напоминание."
-    if not lessons:
-        text = f"🎯 <b>{DAYS_RU[d]}</b> — пар нет."
+    if lessons:
+        text = (f"⏰ <b>{DAYS_RU[d]}</b>\nНажми на пару, чтобы выбрать, за сколько о ней напомнить.\n\n"
+                f"🔔 — по умолчанию ({mins_text(data['remind'])}) · ⏰ — своё время · 🔕 — без напоминания")
+    else:
+        text = f"⏰ <b>{DAYS_RU[d]}</b> — пар нет."
     return {"text": text, "reply_markup": b.as_markup(), "parse_mode": "HTML"}
 
 
@@ -873,27 +816,45 @@ async def cb_remind_day(call: CallbackQuery):
     await call.answer()
 
 
-@router.callback_query(F.data.startswith("rtog:"))
-async def cb_remind_toggle(call: CallbackQuery):
+@router.callback_query(F.data.startswith("rl:"))
+async def cb_remind_lesson(call: CallbackQuery):
     _, d, lid = call.data.split(":")
     data = await storage.load(call.from_user.id)
-    les = next((y for y in data["lessons"] if y["id"] == lid), None)
-    if les and not les.get("mute") and storage.remind_minutes(data, les) == 0:
-        return await call.answer("Этот предмет выключен в «📚 По предметам» — включи его там", show_alert=True)
-    x = await storage.toggle_mute(call.from_user.id, lid)
+    x = next((y for y in data["lessons"] if y["id"] == lid), None)
+    if not x:
+        return await call.answer("Пара не найдена")
+    own = x.get("rm", 0 if x.get("mute") else None)
+    b = InlineKeyboardBuilder()
+    for m in REMIND_OPTIONS:
+        b.button(text=("✅ " if own == m else "") + mins_label(m), callback_data=f"rls:{d}:{lid}:{m}")
+    b.adjust(4, 3)
+    b.row(InlineKeyboardButton(text=("✅ " if own is None else "") + f"По умолчанию ({mins_text(data['remind'])})",
+                               callback_data=f"rls:{d}:{lid}:-1"))
+    b.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"rsd:{d}"))
+    await _edit(call, {
+        "text": f"⏰ <b>{DAYS_RU[int(d)]} {x['t'].split(' ')[0]} — {escape(x['s'])}</b>\n"
+                f"За сколько напомнить именно об этой паре?",
+        "reply_markup": b.as_markup(), "parse_mode": "HTML"})
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("rls:"))
+async def cb_remind_lesson_set(call: CallbackQuery):
+    _, d, lid, m = call.data.split(":")
+    m = int(m)
+    x = await storage.set_lesson_remind(call.from_user.id, lid, None if m < 0 else m)
     await _edit(call, await remind_pick_view(call.from_user.id, int(d)))
     if x:
-        await call.answer(("🔕 Не напоминать: " if x.get("mute") else "🔔 Напоминать: ") + x["s"][:40])
+        await call.answer(f"{x['s'][:25]}: " + ("по умолчанию" if m < 0 else mins_text(m)))
     else:
-        await call.answer()
+        await call.answer("Пара не найдена")
 
 
-@router.callback_query(F.data.startswith("rall:"))
-async def cb_remind_all(call: CallbackQuery):
-    _, d, on = call.data.split(":")
-    await storage.set_mute_day(call.from_user.id, int(d), mute=(on == "0"))
-    await _edit(call, await remind_pick_view(call.from_user.id, int(d)))
-    await call.answer()
+@router.callback_query(F.data.startswith("rtog:") | F.data.startswith("rall:") | F.data.startswith("rsub"))
+async def cb_remind_old(call: CallbackQuery):
+    """Кнопки из старых версий меню."""
+    await _edit(call, await remind_view(call.from_user.id))
+    await call.answer("Меню обновилось 🙂")
 
 
 @router.callback_query(F.data == "rback")

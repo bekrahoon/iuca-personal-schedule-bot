@@ -154,7 +154,7 @@ def _plan_entry(data: dict) -> dict:
         "remind": data.get("remind", 0),
         "rs": data.get("remind_by_subject", {}),
         "lessons": [
-            {k: x[k] for k in ("id", "d", "t", "s", "r", "e", "note", "mute", "date", "once") if k in x}
+            {k: x[k] for k in ("id", "d", "t", "s", "r", "e", "note", "mute", "rm", "date", "once") if k in x}
             for x in data.get("lessons", [])
         ],
         "hw": [
@@ -301,14 +301,39 @@ def subject_key(s: str) -> str:
 
 def remind_minutes(data_or_plan: dict, lesson: dict) -> int:
     """За сколько минут напоминать об этой паре: 0 — не напоминать.
-    Отдельная пара 🔕 > настройка предмета > общая настройка."""
+    Своё время у конкретной пары (lesson["rm"]) > общая настройка."""
+    if "rm" in lesson:
+        return int(lesson["rm"])
     if lesson.get("mute"):
         return 0
-    rs = data_or_plan.get("remind_by_subject", data_or_plan.get("rs", {})) or {}
-    k = subject_key(lesson["s"])
-    if k in rs:
-        return int(rs[k])
     return int(data_or_plan.get("remind", 0) or 0)
+
+
+async def set_lesson_remind(user_id: int, lesson_id: str, minutes: int | None) -> dict | None:
+    """minutes=None — «как у всех»; 0 — не напоминать."""
+    data = await load(user_id)
+    for x in data["lessons"]:
+        if x["id"] == lesson_id:
+            x.pop("mute", None)
+            if minutes is None:
+                x.pop("rm", None)
+            else:
+                x["rm"] = minutes
+            await save(user_id, data)
+            return x
+    return None
+
+
+async def set_day_remind(user_id: int, d: int, minutes: int | None) -> None:
+    data = await load(user_id)
+    for x in data["lessons"]:
+        if x["d"] == d:
+            x.pop("mute", None)
+            if minutes is None:
+                x.pop("rm", None)
+            else:
+                x["rm"] = minutes
+    await save(user_id, data)
 
 
 async def set_subject_remind(user_id: int, subject: str, minutes: int | None) -> None:
@@ -391,6 +416,11 @@ def normalize_extras(lesson: dict, raw: dict) -> dict:
         lesson["once"] = sorted(once, key=lambda e: e["date"])
     if raw.get("mute"):
         lesson["mute"] = True
+    if raw.get("rm") is not None:
+        try:
+            lesson["rm"] = int(raw["rm"])
+        except (TypeError, ValueError):
+            pass
     return lesson
 
 

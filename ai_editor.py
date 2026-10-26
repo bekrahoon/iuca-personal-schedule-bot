@@ -178,6 +178,8 @@ async def edit_schedule(
         if old:
             lesson["id"] = old["id"]
             if old.get("mute"):
-                lesson["mute"] = True  # сохраняем выключенное напоминание
+                lesson["mute"] = True  # сохраняем настройки напоминания этой пары
+            if "rm" in old:
+                lesson["rm"] = old["rm"]
         result.append(lesson)
     return result, raw.get("summary", "")
