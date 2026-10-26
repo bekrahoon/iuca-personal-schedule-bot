@@ -886,7 +886,7 @@ async def check_reminders(bot: Bot) -> int:
                 m = storage.remind_minutes(p, x)
                 left = start_minutes(x["t"]) - cur
                 if m and 0 < left <= m:
-                    todo.append((f"{uid}:{x['id']}", uid, f"🔔 <b>Через {left} мин</b>\n" + fmt_card(x), None))
+                    todo.append((f"{uid}:{x['id']}", uid, f"🔔 <b>Через {_dur(left)}</b>\n" + fmt_card(x), None))
         if now.hour >= 20:
             due = [h for h in p.get("hw", []) if h.get("due") == tomorrow]
             if due:
