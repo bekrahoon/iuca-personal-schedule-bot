@@ -401,8 +401,58 @@ async def show_today(message: Message, state: FSMContext):
     day = now_kg().date()
     if message.text == BTN_TOMORROW:
         day += timedelta(days=1)
-    d = day.weekday()
-    await message.answer(await fmt_day(message.from_user.id, d, day), reply_markup=days_kb(min(d, 5)), parse_mode="HTML")
+    await message.answer_photo(await day_photo(message.from_user.id, day), reply_markup=day_nav_kb(day))
+
+
+def day_nav_kb(day) -> InlineKeyboardMarkup:
+    today = now_kg().date()
+    prev_d, next_d = day - timedelta(days=1), day + timedelta(days=1)
+    if prev_d.weekday() == 6:
+        prev_d -= timedelta(days=1)
+    if next_d.weekday() == 6:
+        next_d += timedelta(days=1)
+    monday = render.week_start(day)
+    week_row = []
+    for i, name in enumerate(DAYS_SHORT):
+        dd = monday + timedelta(days=i)
+        week_row.append(InlineKeyboardButton(text=f"• {name} •" if dd == day else name, callback_data=f"dd:{dd.isoformat()}"))
+    mid = "Сегодня" if day != today else "🔄 Обновить"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text=f"◀️ {prev_d.strftime('%d.%m')}", callback_data=f"dd:{prev_d.isoformat()}"),
+            InlineKeyboardButton(text=mid, callback_data=f"dd:{today.isoformat()}"),
+            InlineKeyboardButton(text=f"{next_d.strftime('%d.%m')} ▶️", callback_data=f"dd:{next_d.isoformat()}"),
+        ],
+        week_row,
+        [InlineKeyboardButton(text="📝 Текстом", callback_data=f"ddt:{day.isoformat()}")],
+    ])
+
+
+async def day_photo(uid: int, day) -> BufferedInputFile:
+    now = now_kg()
+    now_min = now.hour * 60 + now.minute if day == now.date() else None
+    png = await asyncio.to_thread(render.render_day, await lessons_of(uid), day, now_min)
+    return BufferedInputFile(png, f"day_{day.isoformat()}.png")
+
+
+@router.callback_query(F.data.startswith("dd:"))
+async def cb_day_photo(call: CallbackQuery):
+    from datetime import date as _date
+    day = _date.fromisoformat(call.data.split(":", 1)[1])
+    try:
+        await call.message.edit_media(InputMediaPhoto(media=await day_photo(call.from_user.id, day)),
+                                      reply_markup=day_nav_kb(day))
+    except Exception:
+        logging.exception("day edit failed")
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("ddt:"))
+async def cb_day_text(call: CallbackQuery):
+    from datetime import date as _date
+    day = _date.fromisoformat(call.data.split(":", 1)[1])
+    await call.message.answer(await fmt_day(call.from_user.id, day.weekday(), day), parse_mode="HTML")
+    await call.answer()
 
 
 @router.callback_query(F.data.startswith("day:"))

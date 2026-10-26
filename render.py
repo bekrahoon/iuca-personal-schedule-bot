@@ -188,3 +188,194 @@ def render_week(lessons: list[dict], monday: date, today: date) -> bytes:
 
 def lesson_sort_key(x: dict) -> int:
     return start_minutes(x["t"])
+
+
+# ---------------------------------------------------------------------
+# Картинка одного дня — крупно, со статусами
+# ---------------------------------------------------------------------
+GREEN = "#4FD18B"
+
+
+def _mins(hhmm: str) -> int:
+    h, m = hhmm.strip().split(":")
+    return int(h) * 60 + int(m)
+
+
+def _dur(m: int) -> str:
+    h, mm = divmod(m, 60)
+    if h and mm:
+        return f"{h} ч {mm} мин"
+    return f"{h} ч" if h else f"{mm} мин"
+
+
+def render_day(all_lessons: list[dict], day: date, now_minutes: int | None) -> bytes:
+    """now_minutes — текущее время в минутах, если day == сегодня, иначе None."""
+    colors = color_map(all_lessons)
+    items = lessons_on(all_lessons, day)
+    real = [x for x in items if not x.get("_cancel")]
+
+    CARD_H = 236
+    GAP = 22
+    WIN_H = 70
+    PADX = 40
+
+    # --- раскладка (считаем высоту)
+    blocks = []  # (kind, payload)
+    prev_end = None
+    for x in items:
+        st, en = (_mins(p) for p in x["t"].split(" - "))
+        if prev_end is not None and not x.get("_cancel") and st - prev_end >= 20:
+            blocks.append(("win", st - prev_end))
+        blocks.append(("card", x))
+        if not x.get("_cancel"):
+            prev_end = en
+
+    NOW_EXTRA = 44
+
+    def is_now(x):
+        if now_minutes is None or x.get("_cancel"):
+            return False
+        a, b = (_mins(p) for p in x["t"].split(" - "))
+        return a <= now_minutes < b
+
+    h = 60 + 84 + 56 + 50
+    for kind, p in blocks:
+        h += (CARD_H + GAP + (NOW_EXTRA if is_now(p) else 0)) if kind == "card" else WIN_H
+    if not real:
+        h += 260
+    h += 40
+
+    img = Image.new("RGB", (W, h), BG)
+    d = ImageDraw.Draw(img)
+
+    # --- заголовок
+    y = 60
+    title = DAYS[day.weekday()]
+    d.text((PADX, y), title, font=font("Bold", 72), fill=TEXT)
+    if now_minutes is not None:
+        tx = PADX + d.textlength(title, font=font("Bold", 72)) + 22
+        chip = "СЕГОДНЯ"
+        cw = d.textlength(chip, font=font("Bold", 28)) + 36
+        d.rounded_rectangle((tx, y + 20, tx + cw, y + 68), radius=24, fill=ACCENT)
+        d.text((tx + 18, y + 27), chip, font=font("Bold", 28), fill=BG)
+    y += 84
+    sub = f"{day.day} {MONTHS[day.month - 1]}"
+    if real:
+        sub += f"  ·  {plural_pairs(len(real))}  ·  {real[0]['t'].split(' - ')[0].zfill(5)} – {real[-1]['t'].split(' - ')[1].zfill(5)}"
+    d.text((PADX, y), sub, font=font("Medium", 36), fill=MUTED)
+    y += 56 + 50
+
+    if not real:
+        d.rounded_rectangle((PADX, y, W - PADX, y + 230), radius=32, fill=CARD)
+        msg = "Пар нет"
+        d.text(((W - d.textlength(msg, font=font("Bold", 60))) / 2, y + 50), msg, font=font("Bold", 60), fill=TEXT)
+        msg2 = "можно отдыхать"
+        d.text(((W - d.textlength(msg2, font=font("Medium", 36))) / 2, y + 135), msg2, font=font("Medium", 36), fill=MUTED)
+        y += 260
+
+    next_marked = False
+    for kind, payload in blocks:
+        if kind == "win":
+            label = f"окно {_dur(payload)}"
+            lf = font("Medium", 32)
+            lw = d.textlength(label, font=lf)
+            cy = y + WIN_H // 2 - 6
+            d.line((PADX + 30, cy, (W - lw) / 2 - 24, cy), fill="#2A303C", width=3)
+            d.line(((W + lw) / 2 + 24, cy, W - PADX - 30, cy), fill="#2A303C", width=3)
+            d.text(((W - lw) / 2, cy - 21), label, font=lf, fill=DIM)
+            y += WIN_H
+            continue
+
+        x = payload
+        cancel = bool(x.get("_cancel"))
+        changed = bool(x.get("_changed"))
+        st, en = (_mins(p) for p in x["t"].split(" - "))
+        state = ""
+        if now_minutes is not None and not cancel:
+            if st <= now_minutes < en:
+                state = "now"
+            elif now_minutes >= en:
+                state = "past"
+            elif not next_marked:
+                state = "next"
+                next_marked = True
+        color = colors.get(_base(x["s"]), ACCENT)
+        faded = cancel or state == "past"
+
+        top, bottom = y, y + CARD_H + (NOW_EXTRA if state == "now" else 0)
+        fill = "#1B2A22" if state == "now" else ("#141821" if faded else CARD)
+        d.rounded_rectangle((PADX, top, W - PADX, bottom), radius=32, fill=fill,
+                            outline=GREEN if state == "now" else None, width=4)
+        # цветная полоса слева
+        d.rounded_rectangle((PADX + 26, top + 30, PADX + 36, bottom - 30), radius=5,
+                            fill=DIM if faded else color)
+        lx = PADX + 66
+        right = W - PADX - 34
+
+        # строка 1: время + статус
+        tcol = DIM if faded else TEXT
+        tstr = f"{x['t'].split(' - ')[0].zfill(5)} – {x['t'].split(' - ')[1].zfill(5)}"
+        d.text((lx, top + 30), tstr, font=font("Bold", 44), fill=tcol)
+        chip, cfill, ctext = "", "", BG
+        if cancel:
+            chip, cfill = "ОТМЕНА", RED
+        elif state == "now":
+            chip, cfill = "ИДЁТ СЕЙЧАС", GREEN
+        elif state == "next":
+            chip, cfill = f"ЧЕРЕЗ {_dur(st - now_minutes).upper()}", ACCENT
+        elif state == "past":
+            chip, cfill, ctext = "ПРОШЛА", "#232834", DIM
+        if chip:
+            cf = font("Bold", 28)
+            cw = d.textlength(chip, font=cf) + 40
+            d.rounded_rectangle((right - cw, top + 32, right, top + 80), radius=24, fill=cfill)
+            d.text((right - cw + 20, top + 39), chip, font=cf, fill=ctext)
+
+        # строка 2: предмет
+        sf = font("SemiBold", 50)
+        subj = fit(d, x["s"], sf, right - lx)
+        d.text((lx, top + 92), subj, font=sf, fill=DIM if faded else TEXT)
+        if cancel:
+            sw = d.textlength(subj, font=sf)
+            d.line((lx, top + 124, lx + sw, top + 124), fill=DIM, width=4)
+
+        # строка 3: аудитория + преподаватель / пометка
+        y3 = top + 166
+        cx = lx
+        if x.get("r") and not cancel:
+            rf = font("Bold", 32)
+            room = fit(d, x["r"], rf, 360)
+            rw = d.textlength(room, font=rf) + 36
+            rfill = ORANGE if changed else ("#232834" if faded else "#2A3140")
+            d.rounded_rectangle((cx, y3 - 6, cx + rw, y3 + 42), radius=22, fill=rfill)
+            d.text((cx + 18, y3), room, font=rf, fill=BG if changed else (DIM if faded else TEXT))
+            cx += rw + 20
+        extra = ""
+        ecol = DIM if faded else MUTED
+        if cancel:
+            extra = "пара отменена в этот день"
+            ecol = RED
+        elif changed:
+            extra = "изменено на этот день"
+            ecol = ORANGE
+        elif x.get("e"):
+            extra = x["e"]
+        if extra:
+            ef = font("Medium", 32)
+            d.text((cx, y3 + 1), fit(d, extra, ef, right - cx), font=ef, fill=ecol)
+
+        # прогресс текущей пары
+        if state == "now":
+            frac = (now_minutes - st) / max(1, en - st)
+            bx0, bx1, by = lx, right, bottom - 26
+            d.rounded_rectangle((bx0, by - 8, bx1, by), radius=4, fill="#2A3A30")
+            d.rounded_rectangle((bx0, by - 8, bx0 + max(16, (bx1 - bx0) * frac), by), radius=4, fill=GREEN)
+            left = f"осталось {_dur(en - now_minutes)}"
+            lf = font("SemiBold", 26)
+            d.text((right - d.textlength(left, font=lf), by - 46), left, font=lf, fill=GREEN)
+
+        y = bottom + GAP
+
+    buf = io.BytesIO()
+    img.save(buf, "PNG", optimize=True)
+    return buf.getvalue()
