@@ -89,10 +89,7 @@ async def setup(request: Request, key: str = ""):
     url = f"https://{host}/api/webhook"
     async with Bot(token=botmod.BOT_TOKEN) as bot:
         await bot.set_webhook(url, secret_token=WEBHOOK_SECRET, drop_pending_updates=True)
-        await bot.set_my_commands([
-            BotCommand(command="start", description="Меню"),
-            BotCommand(command="export", description="Скачать расписание JSON"),
-        ])
+        await bot.set_my_commands([BotCommand(command=c, description=d) for c, d in botmod.BOT_COMMANDS])
         info = await bot.get_webhook_info()
     return {"ok": True, "webhook": info.url, "pending": info.pending_update_count}
 

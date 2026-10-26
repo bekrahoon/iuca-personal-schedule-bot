@@ -300,9 +300,37 @@ def main_kb() -> ReplyKeyboardMarkup:
             [KeyboardButton(text=BTN_IUCA)],
         ],
         resize_keyboard=True,
-        is_persistent=True,
+        is_persistent=False,       # меню можно свернуть значком ⌨️ в поле ввода
+        one_time_keyboard=True,    # и оно само прячется после нажатия
         input_field_placeholder="📸 Фото или «перенеси ML на чт»",
     )
+
+
+BOT_COMMANDS = [
+    ("today", "📅 Сегодня"),
+    ("tomorrow", "📆 Завтра"),
+    ("week", "🗓 Неделя"),
+    ("hw", "📝 Домашка"),
+    ("remind", "🔔 Напоминания"),
+    ("edit", "✏️ Редактировать"),
+    ("iuca", "📚 Добавить из IUCA"),
+    ("menu", "⌨️ Показать кнопки"),
+    ("export", "💾 Скачать расписание"),
+]
+_commands_set = False
+
+
+async def ensure_commands(bot: Bot) -> None:
+    """Синяя кнопка «≡ Меню» слева от поля ввода — список разделов."""
+    global _commands_set
+    if _commands_set:
+        return
+    from aiogram.types import BotCommand
+    try:
+        await bot.set_my_commands([BotCommand(command=c, description=d) for c, d in BOT_COMMANDS])
+        _commands_set = True
+    except Exception:
+        logging.exception("set_my_commands failed")
 
 
 def days_kb(active: int, prefix: str = "day") -> InlineKeyboardMarkup:
@@ -391,6 +419,7 @@ async def owner_only_cb(handler, event, data):
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
+    await ensure_commands(message.bot)
     await storage.save(message.from_user.id, await storage.load(message.from_user.id))
     ai_line = (
         "📸 <b>Отправь фото</b> расписания — я сам всё внесу.\n"
@@ -416,37 +445,58 @@ async def cmd_help(message: Message, state: FSMContext):
     await cmd_start(message, state)
 
 
+@router.message(Command("menu"))
+async def cmd_menu(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer("⌨️ Кнопки внизу. Свернуть — значок ⌨️ в поле ввода, а все разделы есть ещё в «≡ Меню» слева.",
+                         reply_markup=main_kb())
+
+
 @router.message(F.text.in_({BTN_TODAY, BTN_TOMORROW}))
+@router.message(Command("today", "tomorrow"))
 async def show_today(message: Message, state: FSMContext):
     await state.clear()
     day = now_kg().date()
-    if message.text == BTN_TOMORROW:
+    if message.text in (BTN_TOMORROW, "/tomorrow") or (message.text or "").startswith("/tomorrow"):
         day += timedelta(days=1)
     await message.answer_photo(await day_photo(message.from_user.id, day), reply_markup=day_nav_kb(day))
 
 
-def day_nav_kb(day) -> InlineKeyboardMarkup:
+def day_nav_kb(day, expanded: bool = False) -> InlineKeyboardMarkup:
+    """Одна строка кнопок; дни недели раскрываются по 🗓."""
     today = now_kg().date()
     prev_d, next_d = day - timedelta(days=1), day + timedelta(days=1)
     if prev_d.weekday() == 6:
         prev_d -= timedelta(days=1)
     if next_d.weekday() == 6:
         next_d += timedelta(days=1)
-    monday = render.week_start(day)
-    week_row = []
-    for i, name in enumerate(DAYS_SHORT):
-        dd = monday + timedelta(days=i)
-        week_row.append(InlineKeyboardButton(text=f"• {name} •" if dd == day else name, callback_data=f"dd:{dd.isoformat()}"))
-    mid = "Сегодня" if day != today else "🔄 Обновить"
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text=f"◀️ {prev_d.strftime('%d.%m')}", callback_data=f"dd:{prev_d.isoformat()}"),
-            InlineKeyboardButton(text=mid, callback_data=f"dd:{today.isoformat()}"),
-            InlineKeyboardButton(text=f"{next_d.strftime('%d.%m')} ▶️", callback_data=f"dd:{next_d.isoformat()}"),
-        ],
-        week_row,
-        [InlineKeyboardButton(text="📝 Текстом", callback_data=f"ddt:{day.isoformat()}")],
-    ])
+    mid = "🔄" if day == today else "Сегодня"
+    rows = [[
+        InlineKeyboardButton(text=f"◀️ {prev_d.strftime('%d.%m')}", callback_data=f"dd:{prev_d.isoformat()}"),
+        InlineKeyboardButton(text=mid, callback_data=f"dd:{today.isoformat()}"),
+        InlineKeyboardButton(text=f"{next_d.strftime('%d.%m')} ▶️", callback_data=f"dd:{next_d.isoformat()}"),
+        InlineKeyboardButton(text="✖️" if expanded else "🗓", callback_data=f"ddx:{day.isoformat()}:{0 if expanded else 1}"),
+    ]]
+    if expanded:
+        monday = render.week_start(day)
+        rows.append([
+            InlineKeyboardButton(text=f"• {n} •" if monday + timedelta(days=i) == day else n,
+                                 callback_data=f"dd:{(monday + timedelta(days=i)).isoformat()}")
+            for i, n in enumerate(DAYS_SHORT)
+        ])
+        rows.append([InlineKeyboardButton(text="📝 Текстом", callback_data=f"ddt:{day.isoformat()}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.callback_query(F.data.startswith("ddx:"))
+async def cb_day_expand(call: CallbackQuery):
+    from datetime import date as _date
+    _, iso, flag = call.data.split(":")
+    try:
+        await call.message.edit_reply_markup(reply_markup=day_nav_kb(_date.fromisoformat(iso), expanded=flag == "1"))
+    except Exception:
+        pass
+    await call.answer()
 
 
 async def day_photo(uid: int, day) -> BufferedInputFile:
@@ -490,14 +540,12 @@ async def cb_day(call: CallbackQuery):
 
 def week_kb(offset: int) -> InlineKeyboardMarkup:
     mid = "Эта неделя" if offset == 0 else ("Следующая" if offset == 1 else ("Прошлая" if offset == -1 else f"{offset:+d} нед."))
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="◀️", callback_data=f"wk:{offset - 1}"),
-            InlineKeyboardButton(text=mid, callback_data="wk:0"),
-            InlineKeyboardButton(text="▶️", callback_data=f"wk:{offset + 1}"),
-        ],
-        [InlineKeyboardButton(text="📝 Текстом", callback_data="wktxt")],
-    ])
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="◀️", callback_data=f"wk:{offset - 1}"),
+        InlineKeyboardButton(text=mid, callback_data="wk:0"),
+        InlineKeyboardButton(text="▶️", callback_data=f"wk:{offset + 1}"),
+        InlineKeyboardButton(text="📝", callback_data="wktxt"),
+    ]])
 
 
 async def week_photo(uid: int, offset: int) -> BufferedInputFile:
@@ -508,6 +556,7 @@ async def week_photo(uid: int, offset: int) -> BufferedInputFile:
 
 
 @router.message(F.text == BTN_WEEK)
+@router.message(Command("week"))
 async def show_week(message: Message, state: FSMContext):
     await state.clear()
     if not await lessons_of(message.from_user.id):
@@ -546,6 +595,7 @@ async def cmd_export(message: Message):
 # РУЧНОЕ РЕДАКТИРОВАНИЕ
 # =====================================================================
 @router.message(F.text == BTN_EDIT)
+@router.message(Command("edit"))
 async def edit_menu(message: Message, state: FSMContext):
     await state.clear()
     d = min(now_kg().weekday(), 5)
@@ -664,6 +714,7 @@ async def add_teacher(message: Message, state: FSMContext):
 # ДОБАВЛЕНИЕ ИЗ ОБЩЕГО РАСПИСАНИЯ IUCA
 # =====================================================================
 @router.message(F.text == BTN_IUCA)
+@router.message(Command("iuca"))
 async def iuca_start(message: Message, state: FSMContext):
     await state.set_state(IucaSearch.query)
     await message.answer(
@@ -726,6 +777,7 @@ async def cb_section_add(call: CallbackQuery):
 # НАПОМИНАНИЯ
 # =====================================================================
 @router.message(F.text == BTN_REMIND)
+@router.message(Command("remind"))
 async def remind_menu(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(**await remind_view(message.from_user.id))
@@ -1114,6 +1166,7 @@ def due_choice_kb(lessons: list[dict], subject: str | None, prefix: str) -> Inli
 
 
 @router.message(F.text == BTN_HW)
+@router.message(Command("hw"))
 async def hw_menu(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(**await hw_view(message.from_user.id))
