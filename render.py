@@ -182,7 +182,7 @@ def render_week(lessons: list[dict], monday: date, today: date) -> bytes:
         y += 22
 
     buf = io.BytesIO()
-    img.save(buf, "PNG", optimize=True)
+    img.save(buf, "PNG", compress_level=1)
     return buf.getvalue()
 
 
@@ -377,5 +377,5 @@ def render_day(all_lessons: list[dict], day: date, now_minutes: int | None) -> b
         y = bottom + GAP
 
     buf = io.BytesIO()
-    img.save(buf, "PNG", optimize=True)
+    img.save(buf, "PNG", compress_level=1)
     return buf.getvalue()

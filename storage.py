@@ -3,9 +3,11 @@
 - Если задан BLOB_READ_WRITE_TOKEN (Vercel) — данные лежат в приватном Vercel Blob.
 - Иначе — JSON-файлы в папке data/ (локальный запуск).
 """
+import copy
 import json
 import os
 import uuid
+from contextvars import ContextVar
 from pathlib import Path
 
 BLOB_ENV_VARS = ("BLOB_READ_WRITE_TOKEN", "VERCEL_BLOB_READ_WRITE_TOKEN", "BLOB_STORE_ID")
@@ -30,8 +32,29 @@ TIME_SLOTS = [
 
 # ---------------------------------------------------------------------
 # Низкоуровневое key-value: key -> dict
+# В пределах одного запроса чтения кэшируются (каждое обращение к Blob — это сетевой запрос).
 # ---------------------------------------------------------------------
+_memo: ContextVar[dict | None] = ContextVar("kv_memo", default=None)
+_MISSING = object()
+
+
+def begin_request() -> None:
+    """Вызывать в начале каждого входящего запроса — новый пустой кэш чтений."""
+    _memo.set({})
+
+
 async def kv_get(key: str) -> dict | None:
+    memo = _memo.get()
+    if memo is not None and key in memo:
+        v = memo[key]
+        return None if v is _MISSING else copy.deepcopy(v)
+    v = await _kv_get_raw(key)
+    if memo is not None:
+        memo[key] = _MISSING if v is None else copy.deepcopy(v)
+    return v
+
+
+async def _kv_get_raw(key: str) -> dict | None:
     if USE_BLOB:
         from vercel.blob import BlobNotFoundError, get_blob
         try:
@@ -49,6 +72,9 @@ async def kv_get(key: str) -> dict | None:
 
 
 async def kv_set(key: str, value: dict) -> None:
+    memo = _memo.get()
+    if memo is not None:
+        memo[key] = copy.deepcopy(value)
     raw = json.dumps(value, ensure_ascii=False).encode()
     if USE_BLOB:
         from vercel.blob import put_blob
@@ -65,6 +91,9 @@ async def kv_set(key: str, value: dict) -> None:
 
 
 async def kv_delete(key: str) -> None:
+    memo = _memo.get()
+    if memo is not None:
+        memo[key] = _MISSING
     if USE_BLOB:
         from vercel.blob import BlobNotFoundError, delete_blob
         try:

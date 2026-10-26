@@ -437,6 +437,7 @@ async def day_photo(uid: int, day) -> BufferedInputFile:
 
 @router.callback_query(F.data.startswith("dd:"))
 async def cb_day_photo(call: CallbackQuery):
+    await call.answer()
     from datetime import date as _date
     day = _date.fromisoformat(call.data.split(":", 1)[1])
     try:
@@ -444,7 +445,6 @@ async def cb_day_photo(call: CallbackQuery):
                                       reply_markup=day_nav_kb(day))
     except Exception:
         logging.exception("day edit failed")
-    await call.answer()
 
 
 @router.callback_query(F.data.startswith("ddt:"))
@@ -495,6 +495,7 @@ async def show_week(message: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("wk:"))
 async def cb_week(call: CallbackQuery):
+    await call.answer()
     offset = max(-8, min(26, int(call.data.split(":")[1])))
     try:
         await call.message.edit_media(
@@ -503,7 +504,6 @@ async def cb_week(call: CallbackQuery):
         )
     except Exception:
         logging.exception("week edit failed")
-    await call.answer()
 
 
 @router.callback_query(F.data == "wktxt")

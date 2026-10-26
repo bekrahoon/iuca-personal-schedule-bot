@@ -1,4 +1,5 @@
 """Точка входа для Vercel: Telegram webhook + эндпоинт напоминаний."""
+import asyncio
 import hmac
 import logging
 import os
@@ -18,9 +19,23 @@ dp = botmod.build_dispatcher(KVStorage())
 app = FastAPI()
 
 
+_bot: tuple | None = None
+
+
+def get_bot() -> Bot:
+    """Один Bot (и одно HTTPS-соединение с Telegram) на тёплый инстанс — без нового TLS на каждый запрос."""
+    global _bot
+    loop = asyncio.get_running_loop()
+    if _bot is None or _bot[0] is not loop:
+        _bot = (loop, Bot(token=botmod.BOT_TOKEN))
+    return _bot[1]
+
+
 @app.middleware("http")
 async def vercel_headers(request: Request, call_next):
     """Передаём заголовки запроса в Vercel SDK — из них берётся OIDC-токен для Blob."""
+    import storage
+    storage.begin_request()
     try:
         from vercel.headers import set_headers
         set_headers(dict(request.headers))
@@ -54,8 +69,7 @@ async def health():
 async def webhook(request: Request, x_telegram_bot_api_secret_token: str | None = Header(default=None)):
     _check(x_telegram_bot_api_secret_token)
     update = Update.model_validate(await request.json(), context={"bot": None})
-    async with Bot(token=botmod.BOT_TOKEN) as bot:
-        await dp.feed_update(bot, update)
+    await dp.feed_update(get_bot(), update)
     return {"ok": True}
 
 

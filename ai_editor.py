@@ -4,9 +4,6 @@ import json
 import logging
 import os
 
-from google import genai
-from google.genai import errors, types
-
 from storage import TIME_SLOTS, make_lesson, normalize_extras, today_kg
 
 MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
@@ -16,7 +13,7 @@ FALLBACK_MODELS = [
     for m in os.environ.get("GEMINI_FALLBACK_MODELS", "gemini-3.6-flash,gemini-3.5-flash-lite").split(",")
     if m.strip()
 ]
-_client: genai.Client | None = None
+_client = None  # google.genai импортируется лениво — он тяжёлый, а нужен только для фото/команд
 
 DAYS_RU = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
 
@@ -29,9 +26,10 @@ def ai_enabled() -> bool:
     return bool(os.environ.get("GEMINI_API_KEY"))
 
 
-def _get_client() -> genai.Client:
+def _get_client():
     global _client
     if _client is None:
+        from google import genai
         _client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
     return _client
 
@@ -105,11 +103,12 @@ SCHEMA = {
 
 
 def _is_busy(e: Exception) -> bool:
+    from google.genai import errors
     code = getattr(e, "code", None)
     return isinstance(e, errors.ServerError) or code in (429, 500, 503, 504) or "UNAVAILABLE" in str(e)
 
 
-async def _generate(parts: list, config: types.GenerateContentConfig):
+async def _generate(parts: list, config):
     last: Exception | None = None
     for i, model in enumerate([MODEL, MODEL, *FALLBACK_MODELS]):
         try:
@@ -137,6 +136,7 @@ async def edit_schedule(
     media_type: str = "image/jpeg",
 ) -> tuple[list[dict], str]:
     """Возвращает (новое_расписание, краткое_описание_изменений)."""
+    from google.genai import types
     today = today_kg()
     parts: list = []
     if image_bytes:
