@@ -120,7 +120,7 @@ async def kv_keys(prefix: str) -> list[str]:
 # Пользовательские данные
 # ---------------------------------------------------------------------
 def _default() -> dict:
-    return {"lessons": [], "remind": 0, "sent": {}}
+    return {"lessons": [], "remind": 0, "sent": {}, "hw": []}
 
 
 async def load(user_id: int) -> dict:

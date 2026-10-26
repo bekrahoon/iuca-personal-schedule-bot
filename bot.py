@@ -37,6 +37,7 @@ try:
 except ImportError:
     pass
 
+import homework as hwlib
 import render
 import storage
 from ai_editor import AIBusyError, ai_enabled, edit_schedule
@@ -286,15 +287,17 @@ def chunks(text: str, limit: int = 4000) -> list[str]:
 BTN_TODAY, BTN_TOMORROW = "📅 Сегодня", "📆 Завтра"
 BTN_WEEK, BTN_EDIT = "🗓 Неделя", "✏️ Редактировать"
 BTN_IUCA, BTN_REMIND = "📚 Добавить из IUCA", "🔔 Напоминания"
-MENU_BUTTONS = {BTN_TODAY, BTN_TOMORROW, BTN_WEEK, BTN_EDIT, BTN_IUCA, BTN_REMIND}
+BTN_HW = "📝 Домашка"
+MENU_BUTTONS = {BTN_TODAY, BTN_TOMORROW, BTN_WEEK, BTN_EDIT, BTN_IUCA, BTN_REMIND, BTN_HW}
 
 
 def main_kb() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text=BTN_TODAY), KeyboardButton(text=BTN_TOMORROW)],
-            [KeyboardButton(text=BTN_WEEK), KeyboardButton(text=BTN_EDIT)],
-            [KeyboardButton(text=BTN_IUCA), KeyboardButton(text=BTN_REMIND)],
+            [KeyboardButton(text=BTN_WEEK), KeyboardButton(text=BTN_HW)],
+            [KeyboardButton(text=BTN_EDIT), KeyboardButton(text=BTN_REMIND)],
+            [KeyboardButton(text=BTN_IUCA)],
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -349,6 +352,11 @@ class AiConfirm(StatesGroup):
     waiting = State()
 
 
+class HwAdd(StatesGroup):
+    text = State()
+    due = State()
+
+
 router = Router()
 
 
@@ -383,6 +391,7 @@ async def cmd_start(message: Message, state: FSMContext):
     await message.answer(
         "👋 <b>Личное расписание IUCA</b>\n\n"
         + ai_line
+        + "📝 «Домашка» — записать задание. Быстро: <i>«дз ML практическая 4 к четвергу»</i>\n"
         + "📚 «Добавить из IUCA» — найти предмет в общем расписании (любой курс) и добавить его пары.\n"
         "✏️ «Редактировать» — удалить/добавить пары вручную.\n\n"
         "/export — скачать расписание JSON, /help — подсказка",
@@ -432,7 +441,8 @@ def day_nav_kb(day) -> InlineKeyboardMarkup:
 async def day_photo(uid: int, day) -> BufferedInputFile:
     now = now_kg()
     now_min = now.hour * 60 + now.minute if day == now.date() else None
-    png = await asyncio.to_thread(render.render_day, await lessons_of(uid), day, now_min)
+    data = await storage.load(uid)
+    png = await asyncio.to_thread(render.render_day, data["lessons"], day, now_min, hwlib.due_on(data.get("hw", []), day))
     return BufferedInputFile(png, f"day_{day.isoformat()}.png")
 
 
@@ -807,6 +817,24 @@ async def check_reminders(bot: Bot) -> int:
     sent_count = 0
     for uid in await storage.all_user_ids():
         data = await storage.load(uid)
+        # вечером (с 20:00) — одно сообщение о домашке на завтра
+        if now.hour >= 20 and data.get("hw_digest") != today:
+            tomorrow = now.date() + timedelta(days=1)
+            due = hwlib.due_on(data.get("hw", []), tomorrow)
+            data["hw_digest"] = today
+            await storage.save(uid, data)
+            if due:
+                lines = [f"• <b>{escape(h.get('s') or 'Без предмета')}</b> — {escape(h['text'])}" for h in due]
+                try:
+                    await bot.send_message(
+                        uid, "📝 <b>На завтра задано:</b>\n\n" + "\n".join(lines),
+                        parse_mode="HTML",
+                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                            InlineKeyboardButton(text="📝 Открыть домашку", callback_data="hwlist")]]),
+                    )
+                    sent_count += 1
+                except Exception:
+                    logging.exception("hw digest failed")
         m = data.get("remind", 0)
         if not m or now.weekday() > 5:
             continue
@@ -939,6 +967,266 @@ async def cb_ai_no(call: CallbackQuery, state: FSMContext):
     await state.clear()
     await call.message.edit_text(call.message.html_text + "\n\n❌ <i>Отменено</i>", parse_mode="HTML")
     await call.answer()
+
+
+# =====================================================================
+# ДОМАШКА
+# =====================================================================
+def hw_list_kb(hw: list[dict]) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    open_items = sorted([h for h in hw if not h.get("done")], key=hwlib.sort_key)
+    for h in open_items[:20]:
+        label = f"{(h.get('s') or '—')[:14]}: {h['text'][:22]}"
+        b.row(
+            InlineKeyboardButton(text=f"✅ {label}", callback_data=f"hwd:{h['id']}"),
+            InlineKeyboardButton(text="🗑", callback_data=f"hwx:{h['id']}"),
+        )
+    done_n = sum(1 for h in hw if h.get("done"))
+    b.row(InlineKeyboardButton(text="➕ Добавить", callback_data="hwadd"))
+    if done_n:
+        b.row(InlineKeyboardButton(text=f"📋 Выполненные ({done_n})", callback_data="hwdone"))
+    return b.as_markup()
+
+
+async def hw_view(uid: int) -> dict:
+    hw = (await storage.load(uid)).get("hw", [])
+    text = hwlib.fmt_list(hw, now_kg().date())
+    if any(not h.get("done") for h in hw):
+        text += "\n\n<i>Нажми ✅, когда сделаешь. Быстро добавить: напиши «дз ML практическая 4 к четвергу»</i>"
+    return {"text": text[:4000], "reply_markup": hw_list_kb(hw), "parse_mode": "HTML"}
+
+
+async def hw_save(uid: int, item: dict) -> None:
+    data = await storage.load(uid)
+    data["hw"] = hwlib.prune(data.get("hw", []) + [item], now_kg().date())
+    await storage.save(uid, data)
+
+
+async def hw_update(uid: int, hid: str, fn) -> dict | None:
+    data = await storage.load(uid)
+    for h in data.get("hw", []):
+        if h["id"] == hid:
+            fn(data, h)
+            await storage.save(uid, data)
+            return h
+    return None
+
+
+def hw_saved_text(item: dict) -> str:
+    mark, lbl = hwlib.due_label(item.get("due"), now_kg().date())
+    subj = escape(item["s"]) if item.get("s") else "Без предмета"
+    return f"✅ Записал\n\n{mark} <b>{subj}</b> · <i>{lbl}</i>\n{escape(item['text'])}"
+
+
+def hw_saved_kb(hid: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="📅 Другой срок", callback_data=f"hwdue:{hid}"),
+        InlineKeyboardButton(text="↩️ Отменить", callback_data=f"hwx:{hid}"),
+    ], [InlineKeyboardButton(text="📝 Вся домашка", callback_data="hwlist")]])
+
+
+def due_choice_kb(lessons: list[dict], subject: str | None, prefix: str) -> InlineKeyboardMarkup:
+    today = now_kg().date()
+    b = InlineKeyboardBuilder()
+    if subject:
+        nd = hwlib.next_lesson_date(lessons, subject, today)
+        if nd:
+            b.row(InlineKeyboardButton(text=f"📚 К след. паре — {DAYS_SHORT[nd.weekday()] if nd.weekday() < 6 else 'Вс'} {nd.strftime('%d.%m')}",
+                                       callback_data=f"{prefix}:{nd.isoformat()}"))
+    tm = today + timedelta(days=1)
+    wk = today + timedelta(days=7)
+    b.row(
+        InlineKeyboardButton(text=f"Завтра {tm.strftime('%d.%m')}", callback_data=f"{prefix}:{tm.isoformat()}"),
+        InlineKeyboardButton(text=f"Через неделю {wk.strftime('%d.%m')}", callback_data=f"{prefix}:{wk.isoformat()}"),
+    )
+    b.row(InlineKeyboardButton(text="Без срока", callback_data=f"{prefix}:none"))
+    return b.as_markup()
+
+
+@router.message(F.text == BTN_HW)
+async def hw_menu(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer(**await hw_view(message.from_user.id))
+
+
+@router.callback_query(F.data == "hwlist")
+async def cb_hw_list(call: CallbackQuery):
+    await call.answer()
+    await call.message.answer(**await hw_view(call.from_user.id))
+
+
+@router.callback_query(F.data.startswith("hwd:"))
+async def cb_hw_done(call: CallbackQuery):
+    def done(data, h):
+        h["done"] = True
+        h["done_at"] = now_kg().date().isoformat()
+    h = await hw_update(call.from_user.id, call.data.split(":")[1], done)
+    await _edit(call, await hw_view(call.from_user.id))
+    await call.answer(f"✅ Сделано: {h['text'][:40]}" if h else "Уже нет в списке")
+
+
+@router.callback_query(F.data.startswith("hwx:"))
+async def cb_hw_delete(call: CallbackQuery):
+    hid = call.data.split(":")[1]
+    h = await hw_update(call.from_user.id, hid, lambda data, h: data["hw"].remove(h))
+    if call.message.text and call.message.text.startswith("✅ Записал"):
+        await call.message.edit_text("↩️ Отменено — задание удалено")
+    else:
+        await _edit(call, await hw_view(call.from_user.id))
+    await call.answer("🗑 Удалено" if h else "Уже удалено")
+
+
+@router.callback_query(F.data == "hwdone")
+async def cb_hw_done_list(call: CallbackQuery):
+    hw = (await storage.load(call.from_user.id)).get("hw", [])
+    b = InlineKeyboardBuilder()
+    for h in sorted([h for h in hw if h.get("done")], key=hwlib.sort_key, reverse=True)[:15]:
+        b.row(InlineKeyboardButton(text=f"↩️ Вернуть: {(h.get('s') or '—')[:12]}: {h['text'][:22]}", callback_data=f"hwu:{h['id']}"))
+    b.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="hwback"))
+    await _edit(call, {"text": hwlib.fmt_list(hw, now_kg().date(), show_done=True)[:4000],
+                       "reply_markup": b.as_markup(), "parse_mode": "HTML"})
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("hwu:"))
+async def cb_hw_undo(call: CallbackQuery):
+    def undo(data, h):
+        h["done"] = False
+        h.pop("done_at", None)
+    await hw_update(call.from_user.id, call.data.split(":")[1], undo)
+    await _edit(call, await hw_view(call.from_user.id))
+    await call.answer("Вернул в список")
+
+
+@router.callback_query(F.data == "hwback")
+async def cb_hw_back(call: CallbackQuery):
+    await _edit(call, await hw_view(call.from_user.id))
+    await call.answer()
+
+
+# --- добавление по шагам: предмет -> текст -> срок
+@router.callback_query(F.data == "hwadd")
+async def cb_hw_add(call: CallbackQuery, state: FSMContext):
+    await state.clear()
+    lessons = await lessons_of(call.from_user.id)
+    b = InlineKeyboardBuilder()
+    for i, name in enumerate(hwlib.subjects(lessons)):
+        b.button(text=name[:30], callback_data=f"hws:{i}")
+    b.button(text="Другое / без предмета", callback_data="hws:-1")
+    b.adjust(2)
+    await call.message.answer("📝 По какому предмету задание?", reply_markup=b.as_markup())
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("hws:"))
+async def cb_hw_subject(call: CallbackQuery, state: FSMContext):
+    i = int(call.data.split(":")[1])
+    data = await state.get_data()
+    subs = hwlib.subjects(await lessons_of(call.from_user.id))
+    subject = subs[i] if 0 <= i < len(subs) else None
+    pending_text = data.get("hw_text")
+    if pending_text:  # предмет выбирали для уже написанного «дз ...»
+        lessons = await lessons_of(call.from_user.id)
+        due = data.get("hw_due")
+        if not due and subject:
+            nd = hwlib.next_lesson_date(lessons, subject, now_kg().date())
+            due = nd.isoformat() if nd else None
+        item = hwlib.make(subject, pending_text, due, now_kg().date())
+        await hw_save(call.from_user.id, item)
+        await state.clear()
+        await call.message.edit_text(hw_saved_text(item), reply_markup=hw_saved_kb(item["id"]), parse_mode="HTML")
+        return await call.answer()
+    await state.set_state(HwAdd.text)
+    await state.update_data(hw_subject=subject)
+    await call.message.edit_text(f"📝 <b>{escape(subject or 'Без предмета')}</b>\nЧто задали? Напиши текстом:", parse_mode="HTML")
+    await call.answer()
+
+
+@router.message(HwAdd.text, F.text, ~F.text.in_(MENU_BUTTONS))
+async def hw_add_text(message: Message, state: FSMContext):
+    data = await state.get_data()
+    await state.update_data(hw_text=message.text.strip())
+    await state.set_state(HwAdd.due)
+    lessons = await lessons_of(message.from_user.id)
+    await message.answer("📅 К какому сроку? Выбери или напиши дату (например <code>30.10</code> или <code>к пятнице</code>):",
+                         reply_markup=due_choice_kb(lessons, data.get("hw_subject"), "hwnew"), parse_mode="HTML")
+
+
+async def _hw_finish(uid: int, state: FSMContext, due: str | None) -> dict:
+    data = await state.get_data()
+    item = hwlib.make(data.get("hw_subject"), data.get("hw_text", ""), due, now_kg().date())
+    await hw_save(uid, item)
+    await state.clear()
+    return item
+
+
+@router.callback_query(HwAdd.due, F.data.startswith("hwnew:"))
+async def cb_hw_new_due(call: CallbackQuery, state: FSMContext):
+    v = call.data.split(":", 1)[1]
+    item = await _hw_finish(call.from_user.id, state, None if v == "none" else v)
+    await call.message.edit_text(hw_saved_text(item), reply_markup=hw_saved_kb(item["id"]), parse_mode="HTML")
+    await call.answer()
+
+
+@router.message(HwAdd.due, F.text, ~F.text.in_(MENU_BUTTONS))
+async def hw_add_due_text(message: Message, state: FSMContext):
+    d, _ = parse_date_any(message.text)
+    if not d:
+        return await message.answer("Не понял дату 🤔 Напиши, например, <code>30.10</code>, <code>завтра</code> или <code>к пятнице</code>",
+                                    parse_mode="HTML")
+    item = await _hw_finish(message.from_user.id, state, d.isoformat())
+    await message.answer(hw_saved_text(item), reply_markup=hw_saved_kb(item["id"]), parse_mode="HTML")
+
+
+def parse_date_any(text: str):
+    from quick_edit import parse_date
+    return parse_date(text, now_kg().date())
+
+
+# --- смена срока у уже записанного
+@router.callback_query(F.data.startswith("hwdue:"))
+async def cb_hw_change_due(call: CallbackQuery):
+    hid = call.data.split(":")[1]
+    data = await storage.load(call.from_user.id)
+    h = next((h for h in data.get("hw", []) if h["id"] == hid), None)
+    if not h:
+        return await call.answer("Задание уже удалено")
+    await call.message.edit_reply_markup(reply_markup=due_choice_kb(data["lessons"], h.get("s"), f"hwset:{hid}"))
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("hwset:"))
+async def cb_hw_set_due(call: CallbackQuery):
+    _, hid, v = call.data.split(":", 2)
+    h = await hw_update(call.from_user.id, hid, lambda data, h: h.update(due=None if v == "none" else v))
+    if not h:
+        return await call.answer("Задание уже удалено")
+    await call.message.edit_text(hw_saved_text(h), reply_markup=hw_saved_kb(hid), parse_mode="HTML")
+    await call.answer("Срок изменён")
+
+
+# --- быстрое добавление текстом: «дз ML практическая 4 к четвергу»
+@router.message(StateFilter(None, AiConfirm.waiting), F.text.func(lambda t: bool(hwlib.PREFIX_RE.match(t))))
+async def hw_quick(message: Message, state: FSMContext):
+    await state.clear()
+    lessons = await lessons_of(message.from_user.id)
+    p = hwlib.parse_quick(message.text, lessons, now_kg().date())
+    if not p or not p["text"]:
+        await state.set_state(HwAdd.text)
+        await state.update_data(hw_subject=p["s"] if p else None)
+        return await message.answer("📝 Что задали? Напиши текст задания:")
+    if not p["s"]:
+        await state.update_data(hw_text=p["text"], hw_due=p["due"])
+        b = InlineKeyboardBuilder()
+        for i, name in enumerate(hwlib.subjects(lessons)):
+            b.button(text=name[:30], callback_data=f"hws:{i}")
+        b.button(text="Без предмета", callback_data="hws:-1")
+        b.adjust(2)
+        return await message.answer(f"📝 «{escape(p['text'])}» — по какому предмету?", reply_markup=b.as_markup(),
+                                    parse_mode="HTML")
+    item = hwlib.make(p["s"], p["text"], p["due"], now_kg().date())
+    await hw_save(message.from_user.id, item)
+    await message.answer(hw_saved_text(item), reply_markup=hw_saved_kb(item["id"]), parse_mode="HTML")
 
 
 # Любой свободный текст = команда на изменение расписания

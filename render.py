@@ -208,11 +208,29 @@ def _dur(m: int) -> str:
     return f"{h} ч" if h else f"{mm} мин"
 
 
-def render_day(all_lessons: list[dict], day: date, now_minutes: int | None) -> bytes:
-    """now_minutes — текущее время в минутах, если day == сегодня, иначе None."""
+YELLOW = "#FFD166"
+HW_LINE = 50
+
+
+def render_day(all_lessons: list[dict], day: date, now_minutes: int | None, hw: list[dict] | None = None) -> bytes:
+    """now_minutes — текущее время в минутах, если day == сегодня, иначе None.
+    hw — домашние задания со сроком на этот день (показываются под парой этого предмета)."""
     colors = color_map(all_lessons)
     items = lessons_on(all_lessons, day)
     real = [x for x in items if not x.get("_cancel")]
+
+    # домашка: к первой паре предмета в этот день; остальное — отдельным блоком внизу
+    hw = list(hw or [])
+    hw_for: dict[str, list[dict]] = {}
+    for x in real:
+        b = _base(x["s"])
+        if any(_base(y["s"]) == b for y in real if y["id"] in hw_for):
+            continue
+        mine = [h for h in hw if h.get("s") and _base(h["s"]) == b]
+        if mine:
+            hw_for[x["id"]] = mine
+            hw = [h for h in hw if h not in mine]
+    hw_rest = hw
 
     CARD_H = 236
     GAP = 22
@@ -238,9 +256,15 @@ def render_day(all_lessons: list[dict], day: date, now_minutes: int | None) -> b
         a, b = (_mins(p) for p in x["t"].split(" - "))
         return a <= now_minutes < b
 
+    def card_extra(x):
+        n = len(hw_for.get(x["id"], [])[:3])
+        return (NOW_EXTRA if is_now(x) else 0) + HW_LINE * n + (14 if n else 0)
+
     h = 60 + 84 + 56 + 50
     for kind, p in blocks:
-        h += (CARD_H + GAP + (NOW_EXTRA if is_now(p) else 0)) if kind == "card" else WIN_H
+        h += (CARD_H + GAP + card_extra(p)) if kind == "card" else WIN_H
+    if hw_rest:
+        h += 80 + 64 * len(hw_rest[:6]) + 20
     if not real:
         h += 260
     h += 40
@@ -302,7 +326,7 @@ def render_day(all_lessons: list[dict], day: date, now_minutes: int | None) -> b
         color = colors.get(_base(x["s"]), ACCENT)
         faded = cancel or state == "past"
 
-        top, bottom = y, y + CARD_H + (NOW_EXTRA if state == "now" else 0)
+        top, bottom = y, y + CARD_H + card_extra(x)
         fill = "#1B2A22" if state == "now" else ("#141821" if faded else CARD)
         d.rounded_rectangle((PADX, top, W - PADX, bottom), radius=32, fill=fill,
                             outline=GREEN if state == "now" else None, width=4)
@@ -364,10 +388,19 @@ def render_day(all_lessons: list[dict], day: date, now_minutes: int | None) -> b
             ef = font("Medium", 32)
             d.text((cx, y3 + 1), fit(d, extra, ef, right - cx), font=ef, fill=ecol)
 
+        # домашка к этой паре
+        hy = top + CARD_H - 22 + (NOW_EXTRA if state == "now" else 0)
+        for h_ in hw_for.get(x["id"], [])[:3]:
+            hf = font("SemiBold", 30)
+            d.rounded_rectangle((lx, hy + 4, lx + 64, hy + 42), radius=10, fill=YELLOW)
+            d.text((lx + 13, hy + 8), "ДЗ", font=font("Bold", 24), fill=BG)
+            d.text((lx + 82, hy + 4), fit(d, h_["text"], hf, right - lx - 82), font=hf, fill=YELLOW)
+            hy += HW_LINE
+
         # прогресс текущей пары
         if state == "now":
             frac = (now_minutes - st) / max(1, en - st)
-            bx0, bx1, by = lx, right, bottom - 26
+            bx0, bx1, by = lx, right, top + CARD_H + NOW_EXTRA - 26
             d.rounded_rectangle((bx0, by - 8, bx1, by), radius=4, fill="#2A3A30")
             d.rounded_rectangle((bx0, by - 8, bx0 + max(16, (bx1 - bx0) * frac), by), radius=4, fill=GREEN)
             left = f"осталось {_dur(en - now_minutes)}"
@@ -375,6 +408,17 @@ def render_day(all_lessons: list[dict], day: date, now_minutes: int | None) -> b
             d.text((right - d.textlength(left, font=lf), by - 46), left, font=lf, fill=GREEN)
 
         y = bottom + GAP
+
+    if hw_rest:
+        y += 10
+        d.text((PADX, y + 14), "СДАТЬ В ЭТОТ ДЕНЬ", font=font("SemiBold", 30), fill=YELLOW)
+        y += 70
+        for h_ in hw_rest[:6]:
+            hf = font("Medium", 32)
+            label = (h_.get("s") + ": " if h_.get("s") else "") + h_["text"]
+            d.rounded_rectangle((PADX, y + 2, PADX + 12, y + 42), radius=6, fill=YELLOW)
+            d.text((PADX + 32, y + 2), fit(d, label, hf, W - PADX * 2 - 40), font=hf, fill=TEXT)
+            y += 64
 
     buf = io.BytesIO()
     img.save(buf, "PNG", compress_level=1)
