@@ -898,17 +898,30 @@ async def run_ai_edit(message: Message, state: FSMContext, instruction: str, ima
     if not ai_enabled():
         return await message.answer("⚠️ Для этого нужен GEMINI_API_KEY в переменных окружения.")
     current = await lessons_of(message.from_user.id)
-    wait = await message.answer("🧠 Разбираю…")
+    wait = await message.answer("🧠 Разбираю…" + (" фото обычно 5–10 сек" if image else ""))
+
+    async def typing():
+        while True:
+            try:
+                await message.bot.send_chat_action(message.chat.id, "typing")
+            except Exception:
+                pass
+            await asyncio.sleep(4)
+
+    typer = asyncio.create_task(typing())
     try:
         new, summary = await edit_schedule(current, instruction, image, mime)
     except AIBusyError:
+        typer.cancel()
         return await wait.edit_text(
             "⏳ Gemini сейчас перегружен (это на стороне Google). Попробуй ещё раз через минуту — "
             "просто отправь то же сообщение."
         )
     except Exception as e:
+        typer.cancel()
         logging.exception("AI edit failed")
         return await wait.edit_text(f"❌ Не получилось: {escape(str(e))[:300]}", parse_mode="HTML")
+    typer.cancel()
 
     await state.set_state(AiConfirm.waiting)
     await state.update_data(pending=new)

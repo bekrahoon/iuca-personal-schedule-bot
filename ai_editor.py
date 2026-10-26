@@ -103,9 +103,15 @@ def _is_busy(e: Exception) -> bool:
     return isinstance(e, errors.ServerError) or code in (429, 500, 503, 504) or "UNAVAILABLE" in str(e)
 
 
+_thinking_ok = True  # если модель не поддерживает настройку «размышлений» — больше её не передаём
+
+
 async def _generate(parts: list, config):
+    global _thinking_ok
     last: Exception | None = None
     for i, model in enumerate([MODEL, MODEL]):  # одна повторная попытка, если перегружена
+        if not _thinking_ok:
+            config.thinking_config = None
         try:
             return await asyncio.wait_for(
                 _get_client().aio.models.generate_content(model=model, contents=parts, config=config),
@@ -115,6 +121,10 @@ async def _generate(parts: list, config):
             last = e
             logging.warning("Gemini %s timeout", model)
         except Exception as e:
+            if config.thinking_config is not None and "think" in str(e).lower():
+                _thinking_ok = False  # не поддерживается — пробуем ещё раз без неё
+                logging.warning("thinking_config not supported: %s", e)
+                continue
             if not _is_busy(e):
                 raise
             last = e
@@ -149,6 +159,8 @@ async def edit_schedule(
         response_mime_type="application/json",
         response_json_schema=SCHEMA,
         temperature=0.1,
+        # без долгих «размышлений» — задача простая (переписать таблицу в JSON), а так в разы быстрее
+        thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.MINIMAL),
     ))
     raw = json.loads(resp.text)
     old_by_id = {x["id"]: x for x in current}
