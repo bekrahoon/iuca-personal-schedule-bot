@@ -136,7 +136,9 @@ async def hw_add(body: HwIn, authorization: str | None = Header(default=None)):
     text, subj, due = body.text.strip(), body.s, body.due
     if not text:
         raise HTTPException(400, "Пустое задание")
-    if subj is None and due is None:
+    if due == "none":
+        due = None
+    elif subj is None and due is None:
         parsed = hwlib.parse_quick(text if hwlib.PREFIX_RE.match(text) else f"дз {text}", data["lessons"], today)
         if parsed:
             subj, due, text = parsed["s"], parsed["due"], parsed["text"] or text
@@ -331,4 +333,18 @@ async def settings(body: SettingsIn, authorization: str | None = Header(default=
     if body.tg is not None:
         data["tg"] = bool(body.tg)
     await storage.save(uid, data)
+    return await _state(uid)
+
+
+class LessonRemindIn(BaseModel):
+    minutes: int | None = None   # None — как у всех пар; 0 — без будильника
+
+
+@router.post("/api/app/lesson/{lid}/remind")
+async def lesson_remind(lid: str, body: LessonRemindIn, authorization: str | None = Header(default=None)):
+    """Личный будильник для одной пары (повторяется каждую неделю)."""
+    uid = _uid(authorization)
+    m = None if body.minutes is None else max(0, min(int(body.minutes), 180))
+    if not await storage.set_lesson_remind(uid, lid, m):
+        raise HTTPException(404, "Пара не найдена")
     return await _state(uid)

@@ -4,162 +4,163 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Расписание МУЦА</title>
-<meta name="theme-color" content="#FFD93B">
+<meta name="theme-color" content="#F3EEE3">
 <link rel="manifest" href="/app/manifest.webmanifest">
 <link rel="icon" href="/app/icon-192.png">
 <link rel="apple-touch-icon" href="/app/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Balsamiq+Sans:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;1,7..72,400&family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&family=UnifrakturMaguntia&display=swap" rel="stylesheet">
 <style>
 :root{
-  --paper:#F4FBFF; --dots:#CFEEFF; --panel:#FFFFFF; --ink:#161616; --muted:#5A5A66;
-  --sun:#FFD93B; --sky:#3EC1F3; --sky-soft:#DDF4FF; --pop:#FF4D4D; --pink:#FF7AB6;
-  --edge:3px solid var(--ink); --shadow:4px 4px 0 var(--ink);
-  font-family:"Balsamiq Sans","Comic Sans MS",system-ui,sans-serif;
-  color-scheme:light;
+  --paper:#F3EEE3; --leaf:#FAF7F0; --ink:#1F1A17; --muted:#6B6157; --rule:#CFC4B0;
+  --blood:#7A1F1F; --gold:#9A7630; --blood-soft:#F1E2DA;
+  --serif:"Literata",Georgia,"Times New Roman",serif;
+  --display:"Old Standard TT","Literata",Georgia,serif;
+  --fraktur:"UnifrakturMaguntia","Old Standard TT",serif;
+  font-family:var(--serif); color-scheme:light;
 }
 *{box-sizing:border-box}
-html,body{margin:0;color:var(--ink)}
-html{background:var(--paper)}
-body{font-size:16px;line-height:1.45;-webkit-font-smoothing:antialiased;
-  background:radial-gradient(var(--dots) 1.6px,transparent 1.7px) 0 0/14px 14px,var(--paper);
-  padding:env(safe-area-inset-top) 0 calc(84px + env(safe-area-inset-bottom));min-height:100vh}
+html,body{margin:0;background:var(--paper);color:var(--ink)}
+body{font-size:16.5px;line-height:1.55;-webkit-font-smoothing:antialiased;font-variant-numeric:oldstyle-nums;
+  padding:env(safe-area-inset-top) 0 calc(80px + env(safe-area-inset-bottom));min-height:100vh}
 button,input,select,textarea{font:inherit;color:inherit}
 button{cursor:pointer}
-:focus-visible{outline:3px dashed var(--sky);outline-offset:3px}
-.wrap{max-width:560px;margin:0 auto;padding:0 16px}
+:focus-visible{outline:2px solid var(--blood);outline-offset:3px}
+.wrap{max-width:540px;margin:0 auto;padding:0 20px}
 
-/* шапка — подпись-«плашка» как в комиксе */
-header{padding:20px 0 6px}
-h1{display:inline-block;margin:0;font-size:30px;line-height:1.1;font-weight:700;background:var(--sun);
-  border:var(--edge);box-shadow:var(--shadow);padding:6px 14px 8px;transform:rotate(-1.5deg);border-radius:4px}
-.sub{color:var(--ink);margin-top:12px;font-size:16px}
-.offline{display:none;margin-top:10px;font-size:14px;background:var(--panel);border:2px solid var(--ink);border-radius:8px;padding:6px 10px}
+/* эпиграф дня — как в начале главы */
+.epigraph{margin:22px 0 4px;padding-left:28%;text-align:right}
+.epigraph .de{font-family:var(--fraktur);font-size:21px;line-height:1.3;color:var(--ink)}
+.epigraph .ru{font-style:italic;color:var(--muted);font-size:14.5px;margin-top:6px;line-height:1.45}
+.epigraph .who{font-family:var(--display);font-style:italic;font-size:14.5px;margin-top:4px}
+
+header{padding:18px 0 4px}
+h1{font-family:var(--display);font-weight:700;font-size:36px;line-height:1.05;margin:0;letter-spacing:-.005em}
+.sub{font-style:italic;color:var(--muted);margin-top:6px;font-size:17px}
+.offline{display:none;margin-top:10px;font-size:14px;font-style:italic;color:var(--blood)}
 .offline.on{display:block}
 
-/* лента дней */
-.strip{display:flex;gap:8px;overflow-x:auto;padding:14px 16px 16px;margin:0 -16px;scrollbar-width:none;
-  scroll-snap-type:x proximity;scroll-padding-inline:16px}
+/* лента дней: строка оглавления */
+.strip{display:flex;overflow-x:auto;margin:14px -20px 6px;padding:0 20px;scrollbar-width:none;
+  border-top:1px solid var(--ink);border-bottom:1px solid var(--ink);scroll-padding-inline:20px}
 .strip::-webkit-scrollbar{display:none}
-.chip{flex:0 0 auto;scroll-snap-align:start;border:var(--edge);background:var(--panel);border-radius:10px;
-  width:54px;padding:5px 0 6px;text-align:center;box-shadow:3px 3px 0 var(--ink)}
-.chip b{display:block;font-size:21px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}
-.chip small{font-size:13px}
-.chip.empty{background:var(--paper);box-shadow:none;border-style:dashed}
-.chip.empty b{color:var(--muted);font-weight:400}
-.chip[aria-pressed=true]{background:var(--sky);transform:translate(-1px,-2px);box-shadow:4px 5px 0 var(--ink)}
-.chip .dot{display:block;width:8px;height:8px;border-radius:50%;background:var(--pink);border:1.5px solid var(--ink);margin:2px auto 0;visibility:hidden}
+.chip{flex:0 0 auto;background:none;border:0;border-right:1px solid var(--rule);width:54px;padding:8px 0 7px;text-align:center;position:relative}
+.chip:last-child{border-right:0}
+.chip b{display:block;font-family:var(--display);font-size:22px;font-weight:400;line-height:1.1;font-variant-numeric:lining-nums}
+.chip small{font-size:12.5px;font-style:italic;color:var(--muted)}
+.chip.empty b{color:#A89D8E}
+.chip[aria-pressed=true] b{font-weight:700;color:var(--blood)}
+.chip[aria-pressed=true]::after{content:"";position:absolute;left:12px;right:12px;bottom:3px;border-bottom:3px double var(--blood)}
+.chip .dot{position:absolute;top:6px;right:8px;width:5px;height:5px;border-radius:50%;background:var(--gold);visibility:hidden}
 .chip.has-hw .dot{visibility:visible}
 
-/* пары — панели комикса */
-.timeline{list-style:none;margin:4px 0 0;padding:0;display:flex;flex-direction:column;gap:14px}
-.slot{display:grid;grid-template-columns:66px 1fr;gap:12px;padding:14px 14px 14px 10px;background:var(--panel);
-  border:var(--edge);border-radius:6px;box-shadow:var(--shadow);position:relative}
-.time{font-variant-numeric:tabular-nums;text-align:right;border-right:2px dashed var(--ink);padding-right:10px}
-.time .start{display:block;font-size:22px;font-weight:700;line-height:1}
-.time .end{font-size:14px;color:var(--muted)}
-.subj{font-weight:700;font-size:18px;line-height:1.25}
-.meta{color:var(--muted);font-size:15px;margin-top:4px;display:flex;flex-wrap:wrap;gap:4px 12px}
-.room{color:var(--ink);font-weight:700;background:var(--sky-soft);border:2px solid var(--ink);border-radius:6px;padding:0 6px}
-.flag{font-size:14px;margin-top:8px;font-weight:700;color:#0B6E99}
-.slot.past{box-shadow:none;border-color:#9A9AA6;background:rgba(255,255,255,.7)}
-.slot.past .subj,.slot.past .start,.slot.past .room{color:#8A8A96}
-.slot.past .room{border-color:#9A9AA6;background:none}
-.slot.past .time{border-color:#9A9AA6}
-.slot.cancel{background:#FFF0F0}
-.slot.cancel .subj,.slot.cancel .start{text-decoration:line-through;text-decoration-thickness:2px}
-.stamp{position:absolute;right:10px;top:10px;color:var(--pop);border:3px solid var(--pop);border-radius:6px;
-  padding:0 8px;font-weight:700;font-size:16px;transform:rotate(8deg);background:var(--panel)}
-.slot.now{background:var(--sun);margin-top:10px}
-/* «Сейчас!» — звёздочка-взрыв, главный акцент */
-.pow{position:absolute;right:-8px;top:-24px;width:96px;height:58px;display:grid;place-items:center;
-  font-weight:700;font-size:16px;color:#fff;background:var(--pop);transform:rotate(7deg);
-  clip-path:polygon(50% 0,61% 22%,85% 6%,78% 32%,100% 36%,82% 54%,98% 78%,72% 72%,64% 100%,50% 78%,34% 100%,28% 72%,2% 80%,18% 56%,0 36%,22% 32%,14% 6%,39% 22%);
-  filter:drop-shadow(2px 2px 0 var(--ink))}
-.bar{height:12px;border-radius:7px;background:#fff;border:2px solid var(--ink);margin-top:10px;overflow:hidden}
-.bar i{display:block;height:100%;background:repeating-linear-gradient(-45deg,var(--pop) 0 6px,#FF7A7A 6px 12px)}
-.status{font-size:15px;font-weight:700;margin-top:8px}
-/* следующая пара — реплика в «пузыре» */
-.slot.next .status{display:inline-block;position:relative;background:var(--sky-soft);border:2px solid var(--ink);
-  border-radius:14px;padding:3px 12px;margin-top:12px}
-.slot.next .status::before{content:"";position:absolute;left:14px;top:-9px;width:12px;height:12px;background:var(--sky-soft);
-  border-left:2px solid var(--ink);border-top:2px solid var(--ink);transform:skewX(25deg) rotate(10deg)}
-.slot.gaprow{display:block;background:none;border:0;box-shadow:none;padding:0 0 0 86px;margin:-6px 0}
-.gap{color:var(--muted);font-size:14px;font-style:italic}
-.free{list-style:none;background:var(--panel);border:var(--edge);box-shadow:var(--shadow);border-radius:6px;padding:22px 18px;font-size:17px}
-.free strong{display:block;font-size:24px;font-weight:700;margin-bottom:2px}
+/* пары как параграфы трактата */
+.timeline{list-style:none;margin:6px 0 0;padding:0}
+.slot{display:grid;grid-template-columns:62px 1fr;gap:14px;padding:16px 0 15px;border-bottom:1px solid var(--rule);position:relative;cursor:pointer;
+  -webkit-tap-highlight-color:transparent}
+.slot:active{background:var(--blood-soft)}
+.time{text-align:right;font-variant-numeric:lining-nums tabular-nums}
+.para{display:block;font-family:var(--display);font-style:italic;color:var(--gold);font-size:14px;line-height:1;margin-bottom:5px}
+.time .start{display:block;font-family:var(--display);font-size:21px;font-weight:700;line-height:1}
+.time .end{font-size:13.5px;color:var(--muted)}
+.subj{font-family:var(--display);font-weight:700;font-size:20px;line-height:1.2}
+.meta{color:var(--muted);font-size:15px;margin-top:3px;display:flex;flex-wrap:wrap;gap:2px 14px}
+.room{color:var(--ink);font-variant:small-caps;letter-spacing:.04em;font-variant-numeric:lining-nums}
+.meta .teacher{font-style:italic}
+.flag{font-size:14.5px;font-style:italic;color:var(--blood);margin-top:5px}
+.marks{display:flex;gap:12px;margin-top:6px;font-size:14px;color:var(--gold);font-style:italic}
+.slot.past{opacity:.5}
+.slot.cancel .subj,.slot.cancel .start{text-decoration:line-through;text-decoration-color:var(--blood)}
+.stamp{display:block;grid-column:2;margin-top:-6px;font-style:italic;color:var(--blood);font-size:14.5px;order:3}
+.slot.now{border-left:3px solid var(--blood);margin-left:-20px;padding-left:17px;background:linear-gradient(90deg,var(--blood-soft),transparent 75%)}
+.pow{position:absolute;left:-2px;top:-11px;font-family:var(--display);font-style:italic;font-size:13.5px;color:var(--leaf);background:var(--blood);padding:0 8px 1px;border-radius:2px}
+.bar{height:0;border-top:1px solid var(--rule);margin-top:10px;position:relative}
+.bar i{position:absolute;left:0;top:-2px;height:3px;background:var(--blood)}
+.status{font-size:15px;font-style:italic;margin-top:6px}
+.slot.now .status{color:var(--blood)}
+.slot.next .status{color:var(--gold)}
+.slot.gaprow{display:block;cursor:default;border-bottom:0;padding:6px 0 6px 76px;font-style:italic;color:var(--muted);font-size:14px}
+.slot.gaprow:active{background:none}
+.gap::before{content:"— ";}
+.free{list-style:none;padding:28px 0;font-style:italic;color:var(--muted);font-size:17px}
+.free strong{display:block;font-family:var(--display);font-style:normal;font-size:24px;color:var(--ink);margin-bottom:4px}
 
 /* домашка */
-.section-title{display:inline-block;font-size:20px;font-weight:700;margin:28px 0 12px;background:var(--panel);
-  border:var(--edge);border-radius:4px;padding:2px 10px;transform:rotate(1deg)}
-.hw-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
-.hw{display:grid;grid-template-columns:30px 1fr auto;gap:10px;align-items:start;padding:12px;background:var(--panel);
-  border:var(--edge);border-radius:6px;box-shadow:3px 3px 0 var(--ink)}
-.check{width:28px;height:28px;border-radius:6px;border:3px solid var(--ink);background:#fff;padding:0;display:grid;place-items:center;font-weight:700}
-.hw.done{box-shadow:none;background:rgba(255,255,255,.7)}
-.hw.done .check{background:var(--sky)}
+.section-title{font-family:var(--display);font-weight:700;font-size:22px;margin:30px 0 4px;padding-bottom:6px;border-bottom:3px double var(--ink)}
+.hw-list{list-style:none;margin:0;padding:0}
+.hw{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:start;padding:12px 0;border-bottom:1px solid var(--rule)}
+.check{width:22px;height:22px;border-radius:2px;border:1.5px solid var(--ink);background:none;padding:0;margin-top:3px;display:grid;place-items:center;color:var(--blood);font-size:15px;font-weight:700}
 .hw.done .hw-text,.hw.done .hw-s{text-decoration:line-through;color:var(--muted)}
-.hw-s{font-weight:700}
-.due{display:inline-block;font-size:14px;margin-top:5px;border:2px solid var(--ink);border-radius:6px;padding:0 6px;background:var(--paper)}
-.due.today,.due.over{background:var(--pop);color:#fff}
-.due.soon{background:var(--sun)}
-.icon-btn{background:none;border:0;color:var(--ink);padding:4px 6px;border-radius:8px;font-size:20px;line-height:1;font-weight:700}
+.hw-s{font-family:var(--display);font-weight:700;font-size:17px}
+.due{font-size:14px;font-style:italic;color:var(--muted);margin-top:2px}
+.due.today,.due.over{color:var(--blood)}
+.due.soon{color:var(--gold)}
+.icon-btn{background:none;border:0;color:var(--muted);padding:2px 6px;font-size:18px;line-height:1}
 
-/* формы и кнопки */
-.field{display:flex;gap:8px;margin:14px 0 8px}
-.input,select,textarea{width:100%;background:#fff;border:var(--edge);border-radius:8px;padding:11px 12px;font-size:16px}
+/* формы */
+.field{display:flex;gap:8px;margin:14px 0 6px}
+.input,select,textarea{width:100%;background:var(--leaf);border:1px solid var(--ink);border-radius:2px;padding:11px 12px;font-size:16px}
 textarea{min-height:96px;resize:vertical}
-.btn{border:var(--edge);border-radius:8px;padding:10px 16px;font-weight:700;background:var(--sky);color:var(--ink);
-  white-space:nowrap;box-shadow:3px 3px 0 var(--ink)}
-.btn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--ink)}
-.btn.ghost{background:#fff}
-.btn.warn{background:var(--sun)}
-.btn:disabled{opacity:.6}
+.btn{border:1px solid var(--ink);border-radius:2px;padding:10px 16px;background:var(--ink);color:var(--leaf);white-space:nowrap;font-family:var(--display);font-size:16.5px}
+.btn.ghost,.btn.warn{background:none;color:var(--ink)}
+.btn.warn{border-color:var(--blood);color:var(--blood)}
+.btn:disabled{opacity:.55}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-.hint{font-size:15px;color:var(--muted);margin:6px 0 0}
+.hint{font-size:14.5px;font-style:italic;color:var(--muted);margin:6px 0 0}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
-.photo-pill{font-size:15px;font-weight:700}
-.diff{white-space:pre-wrap;background:#fff;border:var(--edge);box-shadow:var(--shadow);border-radius:6px;padding:14px;font-size:15px;margin:14px 0}
+.photo-pill{font-style:italic;font-size:15px}
+.diff{white-space:pre-wrap;background:var(--leaf);border-top:3px double var(--ink);border-bottom:1px solid var(--ink);padding:14px 2px;font-size:15px;margin:14px 0}
 details{margin-top:16px}
-summary{cursor:pointer;padding:6px 0;font-weight:700}
-.panel{background:var(--panel);border:var(--edge);border-radius:6px;box-shadow:var(--shadow);padding:16px;margin:16px 0}
-.panel h2{margin:0 0 4px;font-size:20px}
-.panel p{margin:4px 0 0}
+summary{cursor:pointer;padding:6px 0;font-style:italic}
+.panel{border-top:3px double var(--ink);padding:14px 0 18px;margin:18px 0 0}
+.panel h2{font-family:var(--display);font-weight:700;margin:0;font-size:21px}
+.panel p{margin:4px 0 0;color:var(--muted);font-style:italic}
 
-/* выбор вариантов (минуты) */
-.seg{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
-.seg button{border:2px solid var(--ink);background:#fff;border-radius:20px;padding:5px 13px;font-weight:700}
-.seg button[aria-pressed=true]{background:var(--sun);box-shadow:2px 2px 0 var(--ink)}
-.preview{margin-top:12px;font-weight:700}
-.toggle{display:flex;gap:10px;align-items:center;margin-top:12px}
-.toggle input{width:22px;height:22px;accent-color:var(--sky)}
+/* выбор минут */
+.seg{display:flex;flex-wrap:wrap;gap:0;margin-top:12px;border:1px solid var(--ink);border-radius:2px;width:fit-content;max-width:100%}
+.seg button{background:none;border:0;border-right:1px solid var(--ink);padding:6px 11px;font-size:15px}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed=true]{background:var(--ink);color:var(--leaf)}
+.preview{margin-top:12px;color:var(--ink)!important;font-style:normal!important}
+.toggle{display:flex;gap:10px;align-items:center;margin-top:8px}
+.toggle input{width:20px;height:20px;accent-color:var(--blood)}
 
 /* неделя */
-.wk-day{margin-top:18px;background:var(--panel);border:var(--edge);border-radius:6px;box-shadow:var(--shadow);padding:6px 14px 4px}
-.wk-day h3{font-size:19px;font-weight:700;margin:6px 0 2px}
-.wk-row{display:grid;grid-template-columns:100px 1fr auto;gap:10px;padding:10px 0;border-top:2px dashed #C9C9D2;align-items:start}
-.wk-day h3 + .wk-row{border-top:0}
-.wk-row .t{font-variant-numeric:tabular-nums;font-weight:700;font-size:14px;padding-top:2px;white-space:nowrap}
+.wk-day{margin-top:22px}
+.wk-day h3{font-family:var(--display);font-weight:700;font-size:21px;margin:0;padding-bottom:4px;border-bottom:1px solid var(--ink)}
+.wk-row{display:grid;grid-template-columns:100px 1fr auto;gap:10px;padding:10px 0;border-bottom:1px solid var(--rule);align-items:start}
+.wk-row .t{font-variant-numeric:lining-nums tabular-nums;font-size:14.5px;padding-top:2px;white-space:nowrap}
+
+/* лист пары — всплывает снизу */
+.sheet-bg{position:fixed;inset:0;background:rgba(31,26,23,.35);z-index:20;opacity:0;transition:opacity .2s}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:21;background:var(--leaf);border-top:3px double var(--ink);
+  max-height:88vh;overflow:auto;padding:18px 20px calc(24px + env(safe-area-inset-bottom));transform:translateY(100%);transition:transform .25s ease}
+.sheet.on{transform:none}.sheet-bg.on{opacity:1}
+.sheet .inner{max-width:540px;margin:0 auto}
+.sheet h2{font-family:var(--display);font-size:26px;line-height:1.15;margin:4px 0 2px}
+.sheet .when{font-style:italic;color:var(--muted)}
+.sheet .close{position:absolute;right:14px;top:10px;font-size:24px}
+.sheet h3{font-family:var(--display);font-size:19px;margin:22px 0 2px;padding-top:12px;border-top:1px solid var(--ink)}
+.sheet .note{font-size:14px;font-style:italic;color:var(--muted);margin:4px 0 0}
 
 /* таббар */
-nav.tabs{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:var(--edge);
-  padding:6px 6px calc(6px + env(safe-area-inset-bottom));display:flex;justify-content:center;z-index:5}
-nav.tabs div{display:flex;max-width:560px;width:100%;gap:2px}
-nav.tabs button{position:relative;flex:1;background:none;border:2px solid transparent;padding:5px 0;border-radius:10px;font-size:12px;font-weight:700;
-  display:flex;flex-direction:column;align-items:center;gap:1px}
-nav.tabs svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
-nav.tabs button[aria-current=page]{background:var(--sun);border-color:var(--ink);box-shadow:2px 2px 0 var(--ink)}
-nav.tabs .badge{position:absolute;top:0;left:calc(50% + 6px);background:var(--pop);color:#fff;font-size:11px;border:2px solid var(--ink);border-radius:9px;padding:0 5px;line-height:1.3}
+nav.tabs{position:fixed;left:0;right:0;bottom:0;background:var(--paper);border-top:3px double var(--ink);
+  padding:4px 4px calc(4px + env(safe-area-inset-bottom));display:flex;justify-content:center;z-index:5}
+nav.tabs div{display:flex;max-width:540px;width:100%}
+nav.tabs button{position:relative;flex:1;background:none;border:0;padding:6px 0 4px;font-size:12.5px;color:var(--muted);
+  display:flex;flex-direction:column;align-items:center;gap:1px;font-family:var(--display)}
+nav.tabs svg{width:23px;height:23px;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+nav.tabs button[aria-current=page]{color:var(--blood);font-weight:700}
+nav.tabs .badge{position:absolute;top:2px;left:calc(50% + 7px);background:var(--blood);color:var(--leaf);font-size:10.5px;border-radius:8px;padding:0 5px;line-height:1.4;font-variant-numeric:lining-nums}
 
-.toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#fff;
-  border:var(--edge);box-shadow:var(--shadow);padding:10px 16px;border-radius:16px;font-size:15px;font-weight:700;opacity:0;pointer-events:none;
-  transition:opacity .2s;max-width:90vw;z-index:9}
+.toast{position:fixed;left:50%;bottom:calc(88px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:var(--leaf);
+  padding:9px 16px;border-radius:2px;font-size:15px;font-style:italic;opacity:0;pointer-events:none;transition:opacity .2s;max-width:90vw;z-index:30}
 .toast.on{opacity:1}
 .login{padding:50px 0}
-.login p{font-size:18px;background:#fff;border:var(--edge);box-shadow:var(--shadow);border-radius:6px;padding:16px;margin-top:24px}
-.install{display:none;margin:14px 0 0}
+.login p{font-size:18px;font-style:italic}
+.install{display:none;margin:12px 0 0}
 .install.on{display:flex}
 [hidden]{display:none!important}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -174,6 +175,7 @@ nav.tabs .badge{position:absolute;top:0;left:calc(50% + 6px);background:var(--po
 
   <!-- День -->
   <section id="v-day" hidden>
+    <figure class="epigraph" id="epigraph" style="margin-inline:0"></figure>
     <header>
       <h1 id="dayTitle">Сегодня</h1>
       <div class="sub" id="daySub"></div>
@@ -281,6 +283,29 @@ nav.tabs .badge{position:absolute;top:0;left:calc(50% + 6px);background:var(--po
   <button data-v="alarm"><svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="7.5"/><path d="M12 9v4l2.5 2M5 4L2.5 6.5M19 4l2.5 2.5"/></svg>Будильник</button>
   <button data-v="edit"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></svg>Изменить</button>
 </div></nav>
+<div class="sheet-bg" id="sheetBg" hidden></div>
+<section class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="shTitle" hidden>
+  <div class="inner">
+    <button class="icon-btn close" id="shClose" aria-label="Закрыть">✕</button>
+    <h2 id="shTitle"></h2>
+    <div class="when" id="shWhen"></div>
+    <div class="meta" id="shMeta"></div>
+
+    <h3>Будильник на эту пару</h3>
+    <div class="seg" id="shRemind"></div>
+    <p class="note" id="shRemindNote"></p>
+
+    <h3>Домашка по предмету</h3>
+    <ul class="hw-list" id="shHw"></ul>
+    <form id="shHwForm" style="margin-top:12px">
+      <input class="input" id="shHwText" placeholder="Что задали" autocomplete="off" aria-label="Что задали" style="margin-bottom:8px">
+      <div class="row">
+        <select id="shHwDue" aria-label="Срок" style="flex:1;width:auto"></select>
+        <button class="btn" type="submit">Записать</button>
+      </div>
+    </form>
+  </div>
+</section>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
@@ -326,6 +351,7 @@ function setState(s, fromCache = false) {
   S = s;
   if (!fromCache) { try { localStorage.setItem("state", JSON.stringify(s)); localStorage.setItem("stateAt", Date.now()); } catch (e) {} }
   render();
+  if (shLesson) renderSheet();
 }
 async function load() {
   try {
@@ -404,13 +430,13 @@ function renderDay() {
 
   const ls = dayLessons(selDate);
   const nowM = kgMinutes(), isToday = selDate === today;
-  let html = "", prevEnd = null, nextMarked = false;
+  let html = "", prevEnd = null, nextMarked = false, para = 0;
   if (!ls.length) {
     html = `<li class="free"><strong>${wd(selDate) === 6 ? "Воскресенье" : "Пар нет"}</strong>${wd(selDate) === 6 ? "Отдыхай." : "Свободный день."}</li>`;
   }
   for (const x of ls) {
     const [s, e, a, b] = range(x.t);
-    if (prevEnd !== null && s - prevEnd >= 30 && !x._cancel) html += `<li class="slot gaprow"><span></span><div class="gap">окно ${dur(s - prevEnd)}</div></li>`;
+    if (prevEnd !== null && s - prevEnd >= 30 && !x._cancel) html += `<li class="slot gaprow"><span class="gap">окно ${dur(s - prevEnd)}</span></li>`;
     let cls = "slot", status = "";
     if (x._cancel) cls += " cancel";
     else if (isToday && nowM >= s && nowM < e) {
@@ -421,16 +447,27 @@ function renderDay() {
     const flags = [];
     if (!x._cancel && x._changed) flags.push("Изменено только на этот день");
     if (x.date) flags.push("Разовая пара");
-    const badge = cls.includes(" now") ? `<span class="pow" aria-hidden="true">Сейчас!</span>` : x._cancel ? `<span class="stamp">Отмена</span>` : "";
-    html += `<li class="${cls}">${badge}
-      <div class="time"><span class="start">${esc(a)}</span><span class="end">${esc(b)}</span></div>
+    const badge = cls.includes(" now") ? `<span class="pow">идёт</span>` : "";
+    const nHw = S.hw.filter(h => !h.done && h.due === selDate && baseSubj(h.s) === baseSubj(x.s)).length;
+    const marks = [];
+    if (x.rm !== undefined) marks.push(x.rm ? `🔔 за ${dur(x.rm)}` : "🔕 без будильника");
+    if (nHw) marks.push(`✎ ${nHw === 1 ? "задание" : nHw + " задания"} к паре`);
+    para++;
+    html += `<li class="${cls}" data-id="${esc(x.id)}" tabindex="0" role="button" aria-label="${esc(x.s)}, ${esc(a)}. Открыть: будильник и домашка">${badge}
+      <div class="time"><span class="para">§ ${para}</span><span class="start">${esc(a)}</span><span class="end">${esc(b)}</span></div>
       <div><div class="subj">${esc(x.s)}</div>
-        <div class="meta">${x.r ? `<span class="room">${esc(x.r)}</span>` : ""}${x.e ? `<span>${esc(x.e)}</span>` : ""}</div>
+        <div class="meta">${x.r ? `<span class="room">ауд. ${esc(x.r)}</span>` : ""}${x.e ? `<span class="teacher">${esc(x.e)}</span>` : ""}</div>
         ${x.note ? `<div class="meta">${esc(x.note)}</div>` : ""}
-        ${flags.length ? `<div class="flag">${flags.join(". ")}</div>` : ""}${status}</div></li>`;
+        ${x._cancel ? `<div class="flag">Отменена в этот день</div>` : ""}
+        ${flags.length ? `<div class="flag">${flags.join(". ")}</div>` : ""}${marks.length ? `<div class="marks">${marks.map(m => `<span>${esc(m)}</span>`).join("")}</div>` : ""}${status}</div></li>`;
     if (!x._cancel) prevEnd = e;
   }
   $("timeline").innerHTML = html;
+  $("timeline").querySelectorAll(".slot[data-id]").forEach(li => {
+    li.onclick = () => openLesson(li.dataset.id, selDate);
+    li.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openLesson(li.dataset.id, selDate); } };
+  });
+  renderEpigraph();
 
   const due = S.hw.filter(h => !h.done && h.due === selDate);
   $("dayHw").innerHTML = due.length ? `<h2 class="section-title">Сдать ${rel === 0 ? "сегодня" : rel === 1 ? "завтра" : ddmm(selDate)}</h2><ul class="hw-list">${due.map(hwItem).join("")}</ul>` : "";
@@ -475,7 +512,7 @@ function weekRows(withDelete) {
     const ls = S.lessons.filter(x => x.d === d);
     if (!ls.length) continue;
     html += `<div class="wk-day"><h3>${DAYS[d]}</h3>` + ls.map(x => `
-      <div class="wk-row"><div class="t">${esc(x.t)}</div>
+      <div class="wk-row" data-id="${esc(x.id)}" style="cursor:pointer"><div class="t">${esc(x.t)}</div>
         <div><div class="subj" style="font-size:16px">${esc(x.s)}</div>
           <div class="meta">${x.r ? `<span class="room">${esc(x.r)}</span>` : ""}${x.e ? `<span>${esc(x.e)}</span>` : ""}${x.date ? `<span>только ${ddmm(x.date)}</span>` : ""}</div>
           ${(x.once || []).map(o => `<div class="meta">${ddmm(o.date)}: ${o.cancel ? "отменена" : esc([o.t && "время " + o.t, o.r && "ауд. " + o.r, o.note].filter(Boolean).join(", "))}</div>`).join("")}</div>
@@ -483,7 +520,13 @@ function weekRows(withDelete) {
   }
   return html || `<p class="free"><strong>Расписание пустое</strong>Добавь пары во вкладке «Изменить» — фото или текстом.</p>`;
 }
-function renderWeek() { $("week").innerHTML = weekRows(false); }
+function renderWeek() {
+  $("week").innerHTML = weekRows(false);
+  $("week").querySelectorAll(".wk-row[data-id]").forEach(r => r.onclick = () => {
+    const x = S.lessons.find(l => l.id === r.dataset.id);
+    if (x) openLesson(x.id, x.date || nextDateOf(x));
+  });
+}
 function renderEdit() {
   if (!$("addDay").options.length) {
     $("addDay").innerHTML = DAYS.slice(0, 6).map((d, i) => `<option value="${i}">${d}</option>`).join("");
@@ -495,6 +538,101 @@ function renderEdit() {
     if (confirm(`Удалить «${x.s}» (${DSHORT[x.d]} ${x.t}) из расписания?`)) act(() => api("/api/app/lesson/" + x.id, { method: "DELETE" }), "Пара удалена");
   });
 }
+
+// ---------- эпиграф дня ----------
+const QUOTES = [
+  ["Habe Mut, dich deines eigenen Verstandes zu bedienen!", "Имей мужество пользоваться собственным умом.", "Иммануил Кант"],
+  ["Wer ein Warum zum Leben hat, erträgt fast jedes Wie.", "У кого есть «зачем» жить, тот вынесет почти любое «как».", "Фридрих Ницше"],
+  ["Es ist nicht genug zu wissen, man muss auch anwenden.", "Мало знать — надо и применять.", "Иоганн Вольфганг Гёте"],
+  ["Jeder hält die Grenzen seines Gesichtskreises für die Grenzen der Welt.", "Каждый принимает границы своего кругозора за границы мира.", "Артур Шопенгауэр"],
+  ["Die Eule der Minerva beginnt erst mit der einbrechenden Dämmerung ihren Flug.", "Сова Минервы вылетает лишь с наступлением сумерек.", "Георг Гегель"],
+  ["Ohne Musik wäre das Leben ein Irrtum.", "Без музыки жизнь была бы ошибкой.", "Фридрих Ницше"],
+  ["Der Mensch kann nur Mensch werden durch Erziehung.", "Человек становится человеком только благодаря воспитанию.", "Иммануил Кант"],
+  ["Es muss anders werden, wenn es gut werden soll.", "Чтобы стало хорошо, должно стать иначе.", "Георг Кристоф Лихтенберг"],
+  ["Was mich nicht umbringt, macht mich stärker.", "Что меня не убивает, делает меня сильнее.", "Фридрих Ницше"],
+  ["Wer nicht von dreitausend Jahren sich weiß Rechenschaft zu geben, bleib im Dunkeln unerfahren.", "Кто не умеет отчитаться за три тысячи лет, остаётся во тьме неопытным.", "Иоганн Вольфганг Гёте"],
+  ["Der Mensch kann tun, was er will, aber nicht wollen, was er will.", "Человек может делать, что хочет, но не может хотеть, чего хочет.", "Артур Шопенгауэр"],
+  ["Zwei Dinge erfüllen das Gemüt mit immer neuer Bewunderung: der bestirnte Himmel über mir und das moralische Gesetz in mir.", "Две вещи наполняют душу всё новым изумлением: звёздное небо надо мной и моральный закон во мне.", "Иммануил Кант"],
+];
+function renderEpigraph() {
+  const n = Math.floor(parseIso(selDate || kgToday()) / 864e5) % QUOTES.length;
+  const [de, ru, who] = QUOTES[n];
+  $("epigraph").innerHTML = `<blockquote lang="de" class="de" style="margin:0">${esc(de)}</blockquote><div class="ru">${esc(ru)}</div><figcaption class="who">${esc(who)}</figcaption>`;
+}
+
+// ---------- лист пары: личный будильник и домашка ----------
+const baseSubj = s => String(s || "").replace(/\(.*?\)/g, "").trim().toLowerCase();
+let shLesson = null, shDate = null, shOpener = null;
+function nextDateOf(x, after) {
+  const from = after ? addDays(after, 1) : kgToday();
+  for (let i = 0; i < 28; i++) {
+    const iso = addDays(from, i);
+    if (dayLessons(iso).some(y => y.id === x.id && !y._cancel)) return iso;
+  }
+  return from;
+}
+function nextSubjDate(subj, after) {
+  for (let i = 1; i < 28; i++) {
+    const iso = addDays(after, i);
+    if (dayLessons(iso).some(y => baseSubj(y.s) === subj && !y._cancel)) return iso;
+  }
+  return null;
+}
+function openLesson(id, date) {
+  const base = S.lessons.find(l => l.id === id);
+  if (!base) return;
+  shLesson = base; shDate = date; shOpener = document.activeElement;
+  renderSheet();
+  $("sheet").hidden = $("sheetBg").hidden = false;
+  requestAnimationFrame(() => { $("sheet").classList.add("on"); $("sheetBg").classList.add("on"); $("shClose").focus(); });
+}
+function closeSheet() {
+  $("sheet").classList.remove("on"); $("sheetBg").classList.remove("on");
+  setTimeout(() => { $("sheet").hidden = $("sheetBg").hidden = true; }, 250);
+  shLesson = null;
+  if (shOpener && shOpener.focus) shOpener.focus();
+}
+$("shClose").onclick = closeSheet; $("sheetBg").onclick = closeSheet;
+addEventListener("keydown", e => { if (e.key === "Escape" && shLesson) closeSheet(); });
+function renderSheet() {
+  const x = S.lessons.find(l => l.id === shLesson.id) || shLesson;
+  shLesson = x;
+  const onDay = dayLessons(shDate).find(y => y.id === x.id) || x;
+  const d = parseIso(shDate);
+  $("shTitle").textContent = x.s;
+  $("shWhen").textContent = `${DAYS[wd(shDate)]}, ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}, ${onDay.t}${onDay._cancel ? " — отменена" : ""}`;
+  $("shMeta").innerHTML = (onDay.r ? `<span class="room">ауд. ${esc(onDay.r)}</span>` : "") + (onDay.e ? `<span class="teacher">${esc(onDay.e)}</span>` : "");
+
+  const cur = x.rm === undefined ? -1 : x.rm;
+  seg($("shRemind"), [[-1, "как у всех"], [0, "выкл"], [5, "5"], [10, "10"], [15, "15"], [30, "30"], [60, "60"]], cur, v =>
+    act(() => api(`/api/app/lesson/${x.id}/remind`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ minutes: v < 0 ? null : v }) }),
+        v < 0 ? "Как у всех пар" : v ? `Напомню за ${dur(v)} до пары` : "Без будильника на эту пару"));
+  const def = S.remind || 0;
+  const on = mySub && S.push.includes(mySub.endpoint);
+  $("shRemindNote").textContent = (cur < 0 ? (def ? `Сейчас: за ${dur(def)}, как у всех пар.` : "Сейчас: без напоминания (общая настройка выключена).") : "Минуты до начала пары. Действует каждую неделю.")
+    + (on ? "" : " Чтобы приходило на телефон, включи уведомления во вкладке «Будильник».");
+
+  const subj = baseSubj(x.s);
+  const list = S.hw.filter(h => baseSubj(h.s) === subj).sort((a, b) => (a.done - b.done) || String(a.due).localeCompare(String(b.due)));
+  $("shHw").innerHTML = list.length ? list.map(hwItem).join("") : `<li class="note" style="list-style:none;padding:6px 0">Заданий по этому предмету нет.</li>`;
+  bindHw($("shHw"));
+
+  const opts = [], today = kgToday();
+  if (shDate >= today && !onDay._cancel) opts.push([shDate, `к этой паре (${ddmm(shDate)})`]);
+  const nx = nextSubjDate(subj, shDate);
+  if (nx) opts.push([nx, `к следующей паре (${ddmm(nx)})`]);
+  opts.push(["", "без срока"]);
+  $("shHwDue").innerHTML = opts.map(([v, l]) => `<option value="${v}">${l}</option>`).join("");
+}
+$("shHwForm").onsubmit = e => {
+  e.preventDefault();
+  const text = $("shHwText").value.trim(); if (!text) return toast("Напиши, что задали");
+  const s = shLesson.s.replace(/\(.*?\)/g, "").trim();
+  act(async () => {
+    const st = await api("/api/app/hw", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: text[0].toUpperCase() + text.slice(1), s, due: $("shHwDue").value || "none" }) });
+    $("shHwText").value = ""; return st;
+  }, "Задание записано");
+};
 
 // ---------- будильник ----------
 let mySub = null;
