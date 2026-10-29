@@ -314,6 +314,7 @@ BOT_COMMANDS = [
     ("remind", "🔔 Напоминания"),
     ("edit", "✏️ Редактировать"),
     ("iuca", "📚 Добавить из IUCA"),
+    ("app", "📱 Приложение (без Telegram)"),
     ("menu", "⌨️ Показать кнопки"),
     ("export", "💾 Скачать расписание"),
 ]
@@ -443,6 +444,24 @@ async def cmd_start(message: Message, state: FSMContext):
 @router.message(Command("help"))
 async def cmd_help(message: Message, state: FSMContext):
     await cmd_start(message, state)
+
+
+@router.message(Command("app"))
+async def cmd_app(message: Message, state: FSMContext):
+    """Личная ссылка на PWA — расписание как приложение на главном экране."""
+    import webapp
+    host = (os.environ.get("APP_HOST") or os.environ.get("VERCEL_PROJECT_PRODUCTION_URL")
+            or "iuca-personal-schedule-bot.vercel.app")
+    url = webapp.app_link(host, message.from_user.id)
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📱 Открыть приложение", url=url)]])
+    await message.answer(
+        "📱 <b>Расписание как приложение</b>\n\n"
+        "1. Открой ссылку в Chrome (⋮ → «Открыть в Chrome», если откроется внутри Telegram).\n"
+        "2. Нажми «Установить» (или ⋮ → «Добавить на главный экран»).\n\n"
+        "Дальше открываешь иконку на рабочем столе — без Telegram. "
+        "Ссылка личная, никому не пересылай.",
+        reply_markup=kb, parse_mode="HTML",
+    )
 
 
 @router.message(Command("menu"))

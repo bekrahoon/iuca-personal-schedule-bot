@@ -10,6 +10,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 import bot as botmod
+import webapp
 from fsm_storage import KVStorage
 
 logging.basicConfig(level=logging.INFO)
@@ -17,6 +18,7 @@ logging.basicConfig(level=logging.INFO)
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
 dp = botmod.build_dispatcher(KVStorage())
 app = FastAPI()
+app.include_router(webapp.router)
 
 
 _bot: tuple | None = None
