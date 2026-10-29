@@ -120,7 +120,7 @@ async def kv_keys(prefix: str) -> list[str]:
 # Пользовательские данные
 # ---------------------------------------------------------------------
 def _default() -> dict:
-    return {"lessons": [], "remind": 0, "sent": {}, "hw": []}
+    return {"lessons": [], "remind": 0, "sent": {}, "hw": [], "push": [], "wake": 0, "tg": True}
 
 
 async def load(user_id: int) -> dict:
@@ -153,6 +153,9 @@ def _plan_entry(data: dict) -> dict:
     return {
         "remind": data.get("remind", 0),
         "rs": data.get("remind_by_subject", {}),
+        "wake": data.get("wake", 0),
+        "tg": data.get("tg", True),
+        "push": data.get("push", []),
         "lessons": [
             {k: x[k] for k in ("id", "d", "t", "s", "r", "e", "note", "mute", "rm", "date", "once") if k in x}
             for x in data.get("lessons", [])

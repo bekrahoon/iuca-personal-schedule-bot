@@ -947,24 +947,41 @@ async def check_reminders(bot: Bot) -> int:
     tomorrow = (now.date() + timedelta(days=1)).isoformat()
     plan = await storage.get_plan()
 
-    todo: list[tuple[str, int, str, InlineKeyboardMarkup | None]] = []  # (ключ, uid, текст, кнопки)
+    # (ключ, uid, текст для Telegram, кнопки, уведомление для приложения)
+    todo: list[tuple[str, int, str, InlineKeyboardMarkup | None, dict]] = []
     for uid_s, p in plan.items():
         uid = int(uid_s)
         if now.weekday() <= 5:
-            for x in lessons_on(p.get("lessons", []), now.date()):
-                if x.get("_cancel"):
-                    continue
+            day = [x for x in lessons_on(p.get("lessons", []), now.date()) if not x.get("_cancel")]
+            for x in day:
                 m = storage.remind_minutes(p, x)
                 left = start_minutes(x["t"]) - cur
                 if m and 0 < left <= m:
-                    todo.append((f"{uid}:{x['id']}", uid, f"🔔 <b>Через {_dur(left)}</b>\n" + fmt_card(x), None))
+                    where = ", ".join(v for v in (x.get("r"), x.get("e")) if v)
+                    todo.append((f"{uid}:{x['id']}", uid, f"🔔 <b>Через {_dur(left)}</b>\n" + fmt_card(x), None,
+                                 {"title": f"Через {_dur(left)}: {x['s']}",
+                                  "body": f"{x['t']}" + (f" · {where}" if where else ""), "tag": "lesson-" + x["id"]}))
+            wake = int(p.get("wake", 0) or 0)
+            if wake and day:
+                first = day[0]
+                left = start_minutes(first["t"]) - cur
+                if 0 < left <= wake:
+                    todo.append((f"{uid}:wake", uid,
+                                 f"⏰ <b>Подъём!</b> Первая пара через {_dur(left)}\n" + fmt_card(first), None,
+                                 {"title": "⏰ Подъём!",
+                                  "body": f"Первая пара в {first['t'].split(' - ')[0]}: {first['s']}"
+                                          + (f", {first['r']}" if first.get("r") else "") + f". Пар сегодня: {len(day)}",
+                                  "tag": "wake", "alarm": True}))
         if now.hour >= 20:
             due = [h for h in p.get("hw", []) if h.get("due") == tomorrow]
             if due:
                 lines = [f"• <b>{escape(h.get('s') or 'Без предмета')}</b> — {escape(h['text'])}" for h in due]
                 kb = InlineKeyboardMarkup(inline_keyboard=[[
                     InlineKeyboardButton(text="📝 Открыть домашку", callback_data="hwlist")]])
-                todo.append((f"{uid}:hw", uid, "📝 <b>На завтра задано:</b>\n\n" + "\n".join(lines), kb))
+                todo.append((f"{uid}:hw", uid, "📝 <b>На завтра задано:</b>\n\n" + "\n".join(lines), kb,
+                             {"title": "📝 На завтра задано",
+                              "body": "\n".join(f"{h.get('s') or 'Без предмета'}: {h['text']}" for h in due),
+                              "tag": "hw", "url": "/app#hw"}))
 
     mem = _sent_mem.setdefault(today, set())
     for old in [k for k in _sent_mem if k != today]:
@@ -972,17 +989,26 @@ async def check_reminders(bot: Bot) -> int:
     todo = [t for t in todo if t[0] not in mem]
     if not todo:
         return 0
-    fresh = set(await storage.mark_sent([k for k, *_ in todo], today))
-    mem.update(k for k, *_ in todo)
+    fresh = set(await storage.mark_sent([t[0] for t in todo], today))
+    mem.update(t[0] for t in todo)
+    import push
     sent_count = 0
-    for key, uid, text, kb in todo:
+    for key, uid, text, kb, note in todo:
         if key not in fresh:
             continue
-        try:
-            await bot.send_message(uid, text, parse_mode="HTML", reply_markup=kb)
-            sent_count += 1
-        except Exception:
-            logging.exception("reminder send failed")
+        p = plan.get(str(uid), {})
+        subs = p.get("push", [])
+        if subs:
+            ok, dead = await push.send(subs, note)
+            sent_count += ok
+            if dead:
+                await push.drop_dead(uid, dead)
+        if not subs or p.get("tg", True):
+            try:
+                await bot.send_message(uid, text, parse_mode="HTML", reply_markup=kb)
+                sent_count += 1
+            except Exception:
+                logging.exception("reminder send failed")
     return sent_count
 
 

@@ -110,6 +110,9 @@ async def _state(uid: int) -> dict:
         "subjects": hwlib.subjects(lessons),
         "slots": TIME_SLOTS,
         "remind": data.get("remind", 0),
+        "wake": data.get("wake", 0),
+        "tg": data.get("tg", True),
+        "push": [x.get("endpoint", "") for x in data.get("push", [])],
     }
 
 
@@ -253,4 +256,79 @@ async def apply(body: ApplyIn, authorization: str | None = Header(default=None))
         except Exception:
             continue
     await storage.replace_lessons(uid, clean)
+    return await _state(uid)
+
+
+# ----- будильник и уведомления на телефон -----
+@router.get("/api/app/push-key")
+async def push_key():
+    import push
+    return {"key": push.public_key() if push.enabled() else None}
+
+
+class SubIn(BaseModel):
+    endpoint: str
+    keys: dict
+
+
+@router.post("/api/app/push")
+async def push_subscribe(body: SubIn, authorization: str | None = Header(default=None)):
+    uid = _uid(authorization)
+    if not body.endpoint.startswith("https://") or not {"p256dh", "auth"} <= set(body.keys):
+        raise HTTPException(400, "Неверная подписка")
+    data = await storage.load(uid)
+    subs = [x for x in data.get("push", []) if x.get("endpoint") != body.endpoint]
+    subs.append({"endpoint": body.endpoint, "keys": {"p256dh": body.keys["p256dh"], "auth": body.keys["auth"]}})
+    data["push"] = subs[-5:]  # не больше 5 устройств
+    await storage.save(uid, data)
+    return await _state(uid)
+
+
+class EndpointIn(BaseModel):
+    endpoint: str
+
+
+@router.post("/api/app/push/off")
+async def push_unsubscribe(body: EndpointIn, authorization: str | None = Header(default=None)):
+    uid = _uid(authorization)
+    data = await storage.load(uid)
+    data["push"] = [x for x in data.get("push", []) if x.get("endpoint") != body.endpoint]
+    await storage.save(uid, data)
+    return await _state(uid)
+
+
+@router.post("/api/app/push/test")
+async def push_test(body: EndpointIn, authorization: str | None = Header(default=None)):
+    import push
+    uid = _uid(authorization)
+    data = await storage.load(uid)
+    subs = [x for x in data.get("push", []) if x.get("endpoint") == body.endpoint]
+    if not subs:
+        raise HTTPException(404, "Этот телефон не подписан — включи уведомления ещё раз")
+    ok, dead = await push.send(subs, {"title": "⏰ Проверка будильника",
+                                      "body": "Так будут выглядеть напоминания о парах", "tag": "test", "alarm": True},
+                               ttl=60)
+    await push.drop_dead(uid, dead)
+    if not ok:
+        raise HTTPException(502, "Сервис уведомлений не принял сообщение — выключи и включи уведомления")
+    return {"ok": True}
+
+
+class SettingsIn(BaseModel):
+    remind: int | None = None
+    wake: int | None = None
+    tg: bool | None = None
+
+
+@router.post("/api/app/settings")
+async def settings(body: SettingsIn, authorization: str | None = Header(default=None)):
+    uid = _uid(authorization)
+    data = await storage.load(uid)
+    if body.remind is not None:
+        data["remind"] = max(0, min(int(body.remind), 180))
+    if body.wake is not None:
+        data["wake"] = max(0, min(int(body.wake), 180))
+    if body.tg is not None:
+        data["tg"] = bool(body.tg)
+    await storage.save(uid, data)
     return await _state(uid)
