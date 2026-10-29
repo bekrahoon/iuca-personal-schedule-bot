@@ -11,34 +11,28 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;1,7..72,400&family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&family=UnifrakturMaguntia&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;0,7..72,700;1,7..72,400&display=swap" rel="stylesheet">
 <style>
 :root{
-  --paper:#F3EEE3; --leaf:#FAF7F0; --ink:#1F1A17; --muted:#6B6157; --rule:#CFC4B0;
-  --blood:#7A1F1F; --gold:#9A7630; --blood-soft:#F1E2DA;
+  --paper:#F5F1E8; --leaf:#FFFDF8; --ink:#16120F; --muted:#433B33; --rule:#B9AD98;
+  --blood:#8E1B1B; --gold:#7A5A12; --blood-soft:#F3DDD3;
   --serif:"Literata",Georgia,"Times New Roman",serif;
-  --display:"Old Standard TT","Literata",Georgia,serif;
-  --fraktur:"UnifrakturMaguntia","Old Standard TT",serif;
+  --display:"Literata",Georgia,serif;
   font-family:var(--serif); color-scheme:light;
 }
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--paper);color:var(--ink)}
-body{font-size:16.5px;line-height:1.55;-webkit-font-smoothing:antialiased;font-variant-numeric:oldstyle-nums;
+body{font-size:17px;line-height:1.5;-webkit-font-smoothing:antialiased;font-variant-numeric:lining-nums;
   padding:env(safe-area-inset-top) 0 calc(80px + env(safe-area-inset-bottom));min-height:100vh}
 button,input,select,textarea{font:inherit;color:inherit}
 button{cursor:pointer}
 :focus-visible{outline:2px solid var(--blood);outline-offset:3px}
 .wrap{max-width:540px;margin:0 auto;padding:0 20px}
 
-/* эпиграф дня — как в начале главы */
-.epigraph{margin:22px 0 4px;padding-left:28%;text-align:right}
-.epigraph .de{font-family:var(--fraktur);font-size:21px;line-height:1.3;color:var(--ink)}
-.epigraph .ru{font-style:italic;color:var(--muted);font-size:14.5px;margin-top:6px;line-height:1.45}
-.epigraph .who{font-family:var(--display);font-style:italic;font-size:14.5px;margin-top:4px}
 
 header{padding:18px 0 4px}
 h1{font-family:var(--display);font-weight:700;font-size:36px;line-height:1.05;margin:0;letter-spacing:-.005em}
-.sub{font-style:italic;color:var(--muted);margin-top:6px;font-size:17px}
+.sub{color:var(--muted);margin-top:6px;font-size:17px}
 .offline{display:none;margin-top:10px;font-size:14px;font-style:italic;color:var(--blood)}
 .offline.on{display:block}
 
@@ -49,39 +43,43 @@ h1{font-family:var(--display);font-weight:700;font-size:36px;line-height:1.05;ma
 .chip{flex:0 0 auto;background:none;border:0;border-right:1px solid var(--rule);width:54px;padding:8px 0 7px;text-align:center;position:relative}
 .chip:last-child{border-right:0}
 .chip b{display:block;font-family:var(--display);font-size:22px;font-weight:400;line-height:1.1;font-variant-numeric:lining-nums}
-.chip small{font-size:12.5px;font-style:italic;color:var(--muted)}
-.chip.empty b{color:#A89D8E}
-.chip[aria-pressed=true] b{font-weight:700;color:var(--blood)}
-.chip[aria-pressed=true]::after{content:"";position:absolute;left:12px;right:12px;bottom:3px;border-bottom:3px double var(--blood)}
-.chip .dot{position:absolute;top:6px;right:8px;width:5px;height:5px;border-radius:50%;background:var(--gold);visibility:hidden}
+.chip small{font-size:13px;color:var(--muted)}
+.chip.empty b{color:#8C8274}
+.chip[aria-pressed=true]{background:var(--ink);color:var(--leaf)}
+.chip[aria-pressed=true] small{color:var(--leaf)}
+.chip[aria-pressed=true] b{font-weight:700}
+.chip .dot{position:absolute;top:6px;right:7px;width:7px;height:7px;border-radius:50%;background:var(--gold);visibility:hidden}
 .chip.has-hw .dot{visibility:visible}
 
 /* пары как параграфы трактата */
 .timeline{list-style:none;margin:6px 0 0;padding:0}
-.slot{display:grid;grid-template-columns:62px 1fr;gap:14px;padding:16px 0 15px;border-bottom:1px solid var(--rule);position:relative;cursor:pointer;
+.slot{display:grid;grid-template-columns:62px 1fr 14px;gap:12px;padding:16px 0 15px;border-bottom:1px solid var(--rule);position:relative;cursor:pointer;
   -webkit-tap-highlight-color:transparent}
 .slot:active{background:var(--blood-soft)}
+.chev{align-self:center;color:var(--muted);font-size:24px;line-height:1}
+.tap-hint{font-size:14.5px;color:var(--muted);margin:10px 0 0}
 .time{text-align:right;font-variant-numeric:lining-nums tabular-nums}
-.para{display:block;font-family:var(--display);font-style:italic;color:var(--gold);font-size:14px;line-height:1;margin-bottom:5px}
+.para{display:block;color:var(--gold);font-size:14px;font-weight:600;line-height:1;margin-bottom:5px}
 .time .start{display:block;font-family:var(--display);font-size:21px;font-weight:700;line-height:1}
-.time .end{font-size:13.5px;color:var(--muted)}
-.subj{font-family:var(--display);font-weight:700;font-size:20px;line-height:1.2}
-.meta{color:var(--muted);font-size:15px;margin-top:3px;display:flex;flex-wrap:wrap;gap:2px 14px}
-.room{color:var(--ink);font-variant:small-caps;letter-spacing:.04em;font-variant-numeric:lining-nums}
-.meta .teacher{font-style:italic}
-.flag{font-size:14.5px;font-style:italic;color:var(--blood);margin-top:5px}
-.marks{display:flex;gap:12px;margin-top:6px;font-size:14px;color:var(--gold);font-style:italic}
-.slot.past{opacity:.5}
+.time .end{font-size:14px;color:var(--muted)}
+.subj{font-family:var(--display);font-weight:700;font-size:19px;line-height:1.25}
+.meta{color:var(--muted);font-size:15.5px;margin-top:3px;display:flex;flex-wrap:wrap;gap:2px 14px}
+.room{color:var(--ink);font-weight:600}
+.meta .teacher{}
+.flag{font-size:15px;font-weight:600;color:var(--blood);margin-top:5px}
+.marks{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;font-size:14px}
+.marks span{border:1px solid var(--gold);color:var(--gold);border-radius:2px;padding:0 6px;font-weight:600}
+.slot.past{opacity:.6}
 .slot.cancel .subj,.slot.cancel .start{text-decoration:line-through;text-decoration-color:var(--blood)}
 .stamp{display:block;grid-column:2;margin-top:-6px;font-style:italic;color:var(--blood);font-size:14.5px;order:3}
 .slot.now{border-left:3px solid var(--blood);margin-left:-20px;padding-left:17px;background:linear-gradient(90deg,var(--blood-soft),transparent 75%)}
-.pow{position:absolute;left:-2px;top:-11px;font-family:var(--display);font-style:italic;font-size:13.5px;color:var(--leaf);background:var(--blood);padding:0 8px 1px;border-radius:2px}
-.bar{height:0;border-top:1px solid var(--rule);margin-top:10px;position:relative}
-.bar i{position:absolute;left:0;top:-2px;height:3px;background:var(--blood)}
-.status{font-size:15px;font-style:italic;margin-top:6px}
+.pow{position:absolute;left:0;top:-11px;font-weight:600;font-size:13.5px;color:var(--leaf);background:var(--blood);padding:0 8px 1px;border-radius:2px}
+.bar{height:6px;background:var(--leaf);border:1px solid var(--blood);border-radius:3px;margin-top:10px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--blood)}
+.status{font-size:15.5px;font-weight:600;margin-top:6px}
 .slot.now .status{color:var(--blood)}
 .slot.next .status{color:var(--gold)}
-.slot.gaprow{display:block;cursor:default;border-bottom:0;padding:6px 0 6px 76px;font-style:italic;color:var(--muted);font-size:14px}
+.slot.gaprow{display:block;cursor:default;border-bottom:0;padding:6px 0 6px 74px;color:var(--muted);font-size:14px}
 .slot.gaprow:active{background:none}
 .gap::before{content:"— ";}
 .free{list-style:none;padding:28px 0;font-style:italic;color:var(--muted);font-size:17px}
@@ -94,7 +92,7 @@ h1{font-family:var(--display);font-weight:700;font-size:36px;line-height:1.05;ma
 .check{width:22px;height:22px;border-radius:2px;border:1.5px solid var(--ink);background:none;padding:0;margin-top:3px;display:grid;place-items:center;color:var(--blood);font-size:15px;font-weight:700}
 .hw.done .hw-text,.hw.done .hw-s{text-decoration:line-through;color:var(--muted)}
 .hw-s{font-family:var(--display);font-weight:700;font-size:17px}
-.due{font-size:14px;font-style:italic;color:var(--muted);margin-top:2px}
+.due{font-size:14.5px;font-weight:600;color:var(--muted);margin-top:2px}
 .due.today,.due.over{color:var(--blood)}
 .due.soon{color:var(--gold)}
 .icon-btn{background:none;border:0;color:var(--muted);padding:2px 6px;font-size:18px;line-height:1}
@@ -108,7 +106,7 @@ textarea{min-height:96px;resize:vertical}
 .btn.warn{border-color:var(--blood);color:var(--blood)}
 .btn:disabled{opacity:.55}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-.hint{font-size:14.5px;font-style:italic;color:var(--muted);margin:6px 0 0}
+.hint{font-size:15px;color:var(--muted);margin:6px 0 0}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
 .photo-pill{font-style:italic;font-size:15px}
 .diff{white-space:pre-wrap;background:var(--leaf);border-top:3px double var(--ink);border-bottom:1px solid var(--ink);padding:14px 2px;font-size:15px;margin:14px 0}
@@ -116,11 +114,11 @@ details{margin-top:16px}
 summary{cursor:pointer;padding:6px 0;font-style:italic}
 .panel{border-top:3px double var(--ink);padding:14px 0 18px;margin:18px 0 0}
 .panel h2{font-family:var(--display);font-weight:700;margin:0;font-size:21px}
-.panel p{margin:4px 0 0;color:var(--muted);font-style:italic}
+.panel p{margin:4px 0 0;color:var(--muted)}
 
 /* выбор минут */
 .seg{display:flex;flex-wrap:wrap;gap:0;margin-top:12px;border:1px solid var(--ink);border-radius:2px;width:fit-content;max-width:100%}
-.seg button{background:none;border:0;border-right:1px solid var(--ink);padding:6px 11px;font-size:15px}
+.seg button{background:var(--leaf);border:0;border-right:1px solid var(--ink);padding:9px 12px;font-size:16px;min-width:44px}
 .seg button:last-child{border-right:0}
 .seg button[aria-pressed=true]{background:var(--ink);color:var(--leaf)}
 .preview{margin-top:12px;color:var(--ink)!important;font-style:normal!important}
@@ -140,23 +138,23 @@ summary{cursor:pointer;padding:6px 0;font-style:italic}
 .sheet.on{transform:none}.sheet-bg.on{opacity:1}
 .sheet .inner{max-width:540px;margin:0 auto}
 .sheet h2{font-family:var(--display);font-size:26px;line-height:1.15;margin:4px 0 2px}
-.sheet .when{font-style:italic;color:var(--muted)}
+.sheet .when{color:var(--muted);font-size:16px}
 .sheet .close{position:absolute;right:14px;top:10px;font-size:24px}
 .sheet h3{font-family:var(--display);font-size:19px;margin:22px 0 2px;padding-top:12px;border-top:1px solid var(--ink)}
-.sheet .note{font-size:14px;font-style:italic;color:var(--muted);margin:4px 0 0}
+.sheet .note{font-size:15px;color:var(--muted);margin:6px 0 0}
 
 /* таббар */
 nav.tabs{position:fixed;left:0;right:0;bottom:0;background:var(--paper);border-top:3px double var(--ink);
   padding:4px 4px calc(4px + env(safe-area-inset-bottom));display:flex;justify-content:center;z-index:5}
 nav.tabs div{display:flex;max-width:540px;width:100%}
-nav.tabs button{position:relative;flex:1;background:none;border:0;padding:6px 0 4px;font-size:12.5px;color:var(--muted);
+nav.tabs button{position:relative;flex:1;background:none;border:0;border-radius:4px;padding:6px 0 4px;font-size:12.5px;color:var(--muted);
   display:flex;flex-direction:column;align-items:center;gap:1px;font-family:var(--display)}
-nav.tabs svg{width:23px;height:23px;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
-nav.tabs button[aria-current=page]{color:var(--blood);font-weight:700}
+nav.tabs svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+nav.tabs button[aria-current=page]{color:var(--blood);font-weight:700;background:var(--blood-soft)}
 nav.tabs .badge{position:absolute;top:2px;left:calc(50% + 7px);background:var(--blood);color:var(--leaf);font-size:10.5px;border-radius:8px;padding:0 5px;line-height:1.4;font-variant-numeric:lining-nums}
 
 .toast{position:fixed;left:50%;bottom:calc(88px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:var(--leaf);
-  padding:9px 16px;border-radius:2px;font-size:15px;font-style:italic;opacity:0;pointer-events:none;transition:opacity .2s;max-width:90vw;z-index:30}
+  padding:10px 16px;border-radius:4px;font-size:15.5px;opacity:0;pointer-events:none;transition:opacity .2s;max-width:90vw;z-index:30}
 .toast.on{opacity:1}
 .login{padding:50px 0}
 .login p{font-size:18px;font-style:italic}
@@ -175,7 +173,6 @@ nav.tabs .badge{position:absolute;top:2px;left:calc(50% + 7px);background:var(--
 
   <!-- День -->
   <section id="v-day" hidden>
-    <figure class="epigraph" id="epigraph" style="margin-inline:0"></figure>
     <header>
       <h1 id="dayTitle">Сегодня</h1>
       <div class="sub" id="daySub"></div>
@@ -459,15 +456,14 @@ function renderDay() {
         <div class="meta">${x.r ? `<span class="room">ауд. ${esc(x.r)}</span>` : ""}${x.e ? `<span class="teacher">${esc(x.e)}</span>` : ""}</div>
         ${x.note ? `<div class="meta">${esc(x.note)}</div>` : ""}
         ${x._cancel ? `<div class="flag">Отменена в этот день</div>` : ""}
-        ${flags.length ? `<div class="flag">${flags.join(". ")}</div>` : ""}${marks.length ? `<div class="marks">${marks.map(m => `<span>${esc(m)}</span>`).join("")}</div>` : ""}${status}</div></li>`;
+        ${flags.length ? `<div class="flag">${flags.join(". ")}</div>` : ""}${marks.length ? `<div class="marks">${marks.map(m => `<span>${esc(m)}</span>`).join("")}</div>` : ""}${status}</div><span class="chev" aria-hidden="true">›</span></li>`;
     if (!x._cancel) prevEnd = e;
   }
-  $("timeline").innerHTML = html;
+  $("timeline").innerHTML = html + (ls.length ? `<li class="tap-hint" style="list-style:none">Нажми на пару, чтобы поставить на неё будильник или записать домашку.</li>` : "");
   $("timeline").querySelectorAll(".slot[data-id]").forEach(li => {
     li.onclick = () => openLesson(li.dataset.id, selDate);
     li.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openLesson(li.dataset.id, selDate); } };
   });
-  renderEpigraph();
 
   const due = S.hw.filter(h => !h.done && h.due === selDate);
   $("dayHw").innerHTML = due.length ? `<h2 class="section-title">Сдать ${rel === 0 ? "сегодня" : rel === 1 ? "завтра" : ddmm(selDate)}</h2><ul class="hw-list">${due.map(hwItem).join("")}</ul>` : "";
@@ -537,27 +533,6 @@ function renderEdit() {
     const x = S.lessons.find(l => l.id === b.dataset.del);
     if (confirm(`Удалить «${x.s}» (${DSHORT[x.d]} ${x.t}) из расписания?`)) act(() => api("/api/app/lesson/" + x.id, { method: "DELETE" }), "Пара удалена");
   });
-}
-
-// ---------- эпиграф дня ----------
-const QUOTES = [
-  ["Habe Mut, dich deines eigenen Verstandes zu bedienen!", "Имей мужество пользоваться собственным умом.", "Иммануил Кант"],
-  ["Wer ein Warum zum Leben hat, erträgt fast jedes Wie.", "У кого есть «зачем» жить, тот вынесет почти любое «как».", "Фридрих Ницше"],
-  ["Es ist nicht genug zu wissen, man muss auch anwenden.", "Мало знать — надо и применять.", "Иоганн Вольфганг Гёте"],
-  ["Jeder hält die Grenzen seines Gesichtskreises für die Grenzen der Welt.", "Каждый принимает границы своего кругозора за границы мира.", "Артур Шопенгауэр"],
-  ["Die Eule der Minerva beginnt erst mit der einbrechenden Dämmerung ihren Flug.", "Сова Минервы вылетает лишь с наступлением сумерек.", "Георг Гегель"],
-  ["Ohne Musik wäre das Leben ein Irrtum.", "Без музыки жизнь была бы ошибкой.", "Фридрих Ницше"],
-  ["Der Mensch kann nur Mensch werden durch Erziehung.", "Человек становится человеком только благодаря воспитанию.", "Иммануил Кант"],
-  ["Es muss anders werden, wenn es gut werden soll.", "Чтобы стало хорошо, должно стать иначе.", "Георг Кристоф Лихтенберг"],
-  ["Was mich nicht umbringt, macht mich stärker.", "Что меня не убивает, делает меня сильнее.", "Фридрих Ницше"],
-  ["Wer nicht von dreitausend Jahren sich weiß Rechenschaft zu geben, bleib im Dunkeln unerfahren.", "Кто не умеет отчитаться за три тысячи лет, остаётся во тьме неопытным.", "Иоганн Вольфганг Гёте"],
-  ["Der Mensch kann tun, was er will, aber nicht wollen, was er will.", "Человек может делать, что хочет, но не может хотеть, чего хочет.", "Артур Шопенгауэр"],
-  ["Zwei Dinge erfüllen das Gemüt mit immer neuer Bewunderung: der bestirnte Himmel über mir und das moralische Gesetz in mir.", "Две вещи наполняют душу всё новым изумлением: звёздное небо надо мной и моральный закон во мне.", "Иммануил Кант"],
-];
-function renderEpigraph() {
-  const n = Math.floor(parseIso(selDate || kgToday()) / 864e5) % QUOTES.length;
-  const [de, ru, who] = QUOTES[n];
-  $("epigraph").innerHTML = `<blockquote lang="de" class="de" style="margin:0">${esc(de)}</blockquote><div class="ru">${esc(ru)}</div><figcaption class="who">${esc(who)}</figcaption>`;
 }
 
 // ---------- лист пары: личный будильник и домашка ----------

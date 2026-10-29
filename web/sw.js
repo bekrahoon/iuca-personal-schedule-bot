@@ -1,5 +1,5 @@
 // Кэш оболочки приложения: открывается и без интернета (данные — из localStorage).
-const CACHE = "muca-v3";
+const CACHE = "muca-v4";
 const SHELL = ["/app", "/app/manifest.webmanifest", "/app/icon-192.png"];
 
 self.addEventListener("install", e => {
